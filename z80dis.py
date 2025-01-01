@@ -76,7 +76,7 @@ while (loc<len(bin)):
                 #String was too short
                 str_bytes=[]
                 foundstring=""
-                
+
         else:
             # print("Skip at",strloc)
             loc=strloc
@@ -115,9 +115,14 @@ while (loc<len(bin)):
         #Decode it now
         b=z80.decode(code_snapshot,0)
         # Print the instruction
-        code_output(loc+code_org,z80.disasm(b),list_address)
+        if (b.op is b.op.JR):
+            # Handle relative jumps correctly.
+            tmp="JR "+hex(code_org+loc+b.operands[0][1])
+            code_output(loc+code_org,tmp,list_address)
+        else:
+            code_output(loc+code_org,z80.disasm(b),list_address)
         #Finally, move the program counter to the next instruction
         loc=loc+b.len
 
 
-print(loc)
+# print(loc)

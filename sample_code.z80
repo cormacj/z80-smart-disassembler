@@ -21,4 +21,5 @@ this_function:
     jr skip_ahead
     ret
 skip_ahead:
+    ld ix,other_data
     ret

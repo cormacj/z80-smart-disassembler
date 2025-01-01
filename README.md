@@ -11,4 +11,4 @@ I wanted something similar for Z80 code and this project aims to do this.
 
 
 # Dependencies
-I use code https://github.com/lwerdna/z80dis as the disassembler engine.
+I use code from https://github.com/lwerdna/z80dis as the disassembler engine.
