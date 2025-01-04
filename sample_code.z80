@@ -1,13 +1,20 @@
-org 0x100
-
+; org 0x100
+org 0
     jp skip_over_data
 data:
     defb 'This is a C string', 0
     defb 'This is a Amstrad strin', 'g' + 0x80
 
-
 skip_over_data:
     ld HL,data
+    ld (write_data),HL
+    call this_function
+    ret
+orphaned_code:
+    ; It could happen
+    ; Does it become code or data?
+    ld HL,data
+    ld (write_data),HL
     call this_function
     ret
 other_data:
@@ -23,3 +30,5 @@ this_function:
 skip_ahead:
     ld ix,other_data
     ret
+write_data:
+    dw 0
