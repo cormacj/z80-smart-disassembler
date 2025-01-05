@@ -14,13 +14,15 @@ I wanted something similar for Z80 code and this project aims to do this.
 
 # Known Issues
 
-* Generated code causes z80asm to code dump.
+* Generated code causes z80asm to crash.
 
 # ToDo
 
 [ ] Impliment command line parsing
+
 [ ] Add auto commenting
 
 
 # Dependencies
+
 I use code from https://github.com/lwerdna/z80dis as the disassembler engine.
