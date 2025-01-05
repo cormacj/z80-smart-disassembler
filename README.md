@@ -8,6 +8,18 @@ This was inspired by Sourcer from V Communications (see https://corexor.wordpres
 
 I wanted something similar for Z80 code and this project aims to do this.
 
+# Current status
+
+* Working, but janky.
+
+# Known Issues
+
+* Generated code causes z80asm to code dump.
+
+# ToDo
+
+[ ] Impliment command line parsing
+[ ] Add auto commenting
 
 
 # Dependencies

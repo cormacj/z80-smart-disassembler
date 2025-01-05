@@ -30,11 +30,11 @@ def percent(number,max_value):
     return
 
 def update_labels(addr,xref):
-    labels[addr].add(xref)
+    if (addr>=code_org) and (addr<=code_org+len(bin)):
+        labels[addr].add(xref)
     return
 
 def lookup_label(addr):
-    # print(addr)
     addr=int(addr)
     if addr in labels:
         tmp=f'L_{addr:X}'
@@ -99,7 +99,8 @@ while (loc<len(bin)):
         if (data_addr>code_org and data_addr<code_org+len(bin)):
             #The reference is somewhere inside our program
             data_locations[data_addr]="Found"
-            mark_handled(code_org+data_addr,1,"D")
+            # print(hex(data_addr),"data")
+            mark_handled(data_addr,2,"D")
         update_labels(data_addr,loc+code_org)
     loc=loc+b.len
     # print(".",end="")
@@ -156,9 +157,10 @@ for s, start, end in strings_with_locations:
     match = bool(pattern.search(s))
     # print("...",match)
     if match:
-        # print(s)
-        str_locations[start]=s
-        str_sizes[start]=(end-start)
+        # print(s,hex(code_org+start))
+        str_locations[code_org+start]=s
+        str_sizes[code_org+start]=(end-start)
+        # print(s,hex(start),hex(code_org+start))
         mark_handled(code_org+start,(end-start),"D")
 
 
@@ -304,6 +306,7 @@ last="C" #Assume we've got code to start
 while (loc<len(bin)):
     # Go through the identified area and assume that if the last byte was code, the next would be code, unless it changed to data
     # at which point it will be data until its changed again.
+    # print(hex(code_org+loc),identified_areas[code_org+loc])
     if identified_areas[code_org+loc]=="":
         identified_areas[code_org+loc]=last
     elif identified_areas[code_org+loc]!=last:
@@ -337,11 +340,11 @@ while (loc<len(bin)):
     else:
         # otherwise use whats left
         codesize=r
-    # print(loc,str_locations.get(loc))
-    if identified_areas[code_org+loc]=="D" and str_locations.get(loc)!=None:
+    # print(loc,identified_areas[code_org+loc],str_locations.get(code_org+loc))
+    if identified_areas[code_org+loc]=="D" and str_locations.get(code_org+loc)!=None:
         # print("*")
-        code_output(loc+code_org,"DEFB "+str_locations.get(loc),list_address)
-        loc=loc+str_sizes.get(loc)
+        code_output(loc+code_org,"DEFB "+str_locations.get(code_org+loc),list_address)
+        loc=loc+str_sizes.get(code_org+loc)
     elif identified_areas[code_org+loc]=="D":
         tmp=bin[loc]
         if tmp>31 and tmp<127:
@@ -352,7 +355,7 @@ while (loc<len(bin)):
             out_tmp=str(hex(tmp))
         code_output(loc+code_org,"DEFB "+out_tmp,list_address)
         loc=loc+1
-    if identified_areas[code_org+loc]=="C":
+    elif identified_areas[code_org+loc]=="C":
         #Copy the possible opcodes into a buffer for decoding
         for x in range(0,codesize):
             code_snapshot[x]=bin[loc+x]
