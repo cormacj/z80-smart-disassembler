@@ -16,7 +16,7 @@ def code_output(address,text,display_address):
         addr=hex(address)+": "
     else:
         addr=""
-    print(f'{addr}{text}')
+    print(f'    {text:20}  ;{addr}')
     return
 
 def mark_handled(start_address,size,data_type):
@@ -33,8 +33,17 @@ def update_labels(addr,xref):
     labels[addr].add(xref)
     return
 
+def lookup_label(addr):
+    # print(addr)
+    addr=int(addr)
+    if addr in labels:
+        tmp=f'L_{addr:X}'
+        return tmp
+    else:
+        return hex(addr)
+
 #Where is the original code running?
-# code_org=0x100
+# code_org=0x0
 code_org=0xc000
 list_address=1
 min_length=3
@@ -44,6 +53,7 @@ labels=defaultdict(set)
 # Ram is cheap these days, this would never work on a 64K machine
 # f = open('a.bin', 'rb')
 f = open('RODOS219.ROM', 'rb')
+# f = open('a.bin', 'rb')
 try:
     bin = f.read()
 
@@ -118,6 +128,9 @@ for match in pattern.finditer(binary_data):
 
     # Decode the matched bytes to a string
     matched_string = match.group().decode('ascii')
+    text=matched_string.replace('"','",34,"')
+    text=text.replace("\\", '", 0x5c, "')
+    matched_string=text
     found_string='\"'+matched_string+'\"'
     # # Now we have a string, check and process how the string is terminated
     # terminator=binary_data[end_position]
@@ -304,17 +317,16 @@ code_snapshot = bytearray(8)
 loc=0
 # print(str_sizes)
 # print(str_locations)
+print(f"org {hex(code_org)}")
 while (loc<len(bin)):
     if loc+code_org in labels:
-        print(f'L_{loc+code_org:X} ;XREF=',end="")
+        tmp=f'L_{loc+code_org:X}:'
+        print(f'{tmp:25} ;XREF=',end="")
         # print(loc,labels[loc])
         for tmp in labels[loc+code_org]:
             # print(tmp)
             print(f'0x{tmp:X} ',end="")
         print("")
-
-
-
     # print("loc=",loc)
     # The largest op code is 4 bytes - BIT b,(IX+o) - so we'll decode with that
     # How many remaining bytes are left?
@@ -335,7 +347,7 @@ while (loc<len(bin)):
         if tmp>31 and tmp<127:
             out_tmp='"'+chr(tmp)+'"'
         elif (tmp-0x80)>31 and (tmp-0x80)<127:
-            out_tmp='"'+chr(tmp-0x80)+'" + 0x80'
+            out_tmp="('"+chr(tmp-0x80)+"') + 0x80"
         else:
             out_tmp=str(hex(tmp))
         code_output(loc+code_org,"DEFB "+out_tmp,list_address)
@@ -346,14 +358,46 @@ while (loc<len(bin)):
             code_snapshot[x]=bin[loc+x]
         #Decode it now
         b=z80.decode(code_snapshot,0)
+        conds=z80.disasm(b)
+        conds=conds.split(',')[0]+"," #Just get the JP z part
         # Print the instruction
         if (b.op is b.op.JR):
             # Handle relative jumps correctly.
             if b.operands[0][0] is b.operands[0][0].ADDR:
-                tmp="JR "+hex(code_org+loc+b.operands[0][1])
+                tmp="JR "+lookup_label(code_org+loc+b.operands[0][1])
                 # jump_locations[code_org+loc+b.operands[0][1]]=hex(code_org+loc+b.operands[0][1])
             elif b.operands[1][0] is b.operands[1][0].ADDR:
-                tmp="JR "+hex(code_org+loc+b.operands[1][1])
+                tmp="JR "+lookup_label(code_org+loc+b.operands[1][1])
+                # jump_locations[code_org+loc+b.operands[1][1]]=hex(code_org+loc+b.operands[1][1])
+            # tmp="JR "+hex(code_org+loc+b.operands[0][1])
+            code_output(loc+code_org,tmp,list_address)
+        elif (b.op is b.op.DJNZ):
+            # Handle relative jumps correctly.
+            if b.operands[0][0] is b.operands[0][0].ADDR:
+                tmp="DJNZ "+lookup_label(code_org+loc+b.operands[0][1])
+                # jump_locations[code_org+loc+b.operands[0][1]]=hex(code_org+loc+b.operands[0][1])
+            elif b.operands[1][0] is b.operands[1][0].ADDR:
+                tmp="DJNZ "+lookup_label(code_org+loc+b.operands[1][1])
+                # jump_locations[code_org+loc+b.operands[1][1]]=hex(code_org+loc+b.operands[1][1])
+            # tmp="JR "+hex(code_org+loc+b.operands[0][1])
+            code_output(loc+code_org,tmp,list_address)
+        elif (b.op is b.op.JP) and (b.operands[0][0] is not b.operands[0][0].REG_DEREF):
+            # Handle relative jumps correctly.
+            if b.operands[0][0] is b.operands[0][0].ADDR:
+                tmp='JP '+lookup_label(b.operands[0][1])
+                # jump_locations[code_org+loc+b.operands[0][1]]=hex(code_org+loc+b.operands[0][1])
+            elif b.operands[1][0] is b.operands[1][0].ADDR:
+                tmp=conds+lookup_label(b.operands[1][1])
+                # jump_locations[code_org+loc+b.operands[1][1]]=hex(code_org+loc+b.operands[1][1])
+            # tmp="JR "+hex(code_org+loc+b.operands[0][1])
+            code_output(loc+code_org,tmp,list_address)
+        elif (b.op is b.op.CALL):
+            # Handle relative jumps correctly.
+            if b.operands[0][0] is b.operands[0][0].ADDR:
+                tmp='CALL '+lookup_label(b.operands[0][1])
+                # jump_locations[code_org+loc+b.operands[0][1]]=hex(code_org+loc+b.operands[0][1])
+            elif b.operands[1][0] is b.operands[1][0].ADDR:
+                tmp=conds+lookup_label(b.operands[1][1])
                 # jump_locations[code_org+loc+b.operands[1][1]]=hex(code_org+loc+b.operands[1][1])
             # tmp="JR "+hex(code_org+loc+b.operands[0][1])
             code_output(loc+code_org,tmp,list_address)

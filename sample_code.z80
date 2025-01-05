@@ -29,6 +29,7 @@ this_function:
     ret
 skip_ahead:
     ld ix,other_data
+    djnz skip_ahead
     ret
 write_data:
     dw 0
