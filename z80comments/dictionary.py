@@ -41,89 +41,30 @@ opcode_comments = {
 "OR": "Bitwise OR on A with $1",
 "OTDR": "B is decremented. A byte from the memory location pointed to by HL is written to the port at the 16-bit address contained in the BC register pair. Then HL is decremented. If B is not zero, this operation is repeated. Interrupts can trigger while this instruction is processing. Note that the carry flag may be affected, contrary to documentation.",
 "OTIR": "B is decremented. A byte from the memory location pointed to by HL is written to the port at the 16-bit address contained in the BC register pair. Then HL is incremented. If B is not zero, this operation is repeated. Interrupts can trigger while this instruction is processing. Note that the carry flag may be affected, contrary to documentation.",
-# OUT (C),A
-# OUT (C),B
-# OUT (C),C
-# OUT (C),D
-# OUT (C),E
-# OUT (C),H
-# OUT (C),L
-# OUT (n),A
-# OUTD
-# OUTI
-# POP AF
-# POP BC
-# POP DE
-# POP HL
-# POP IX
-# POP IY
-# PUSH AF
-# PUSH BC
-# PUSH DE
-# PUSH HL
-# PUSH IX
-# PUSH IY
-# RES 1,(HL)
-# RES 1,(IX+1)
-# RES 1,(IY+1)
-# RES 1,B
-# RET
-# RET C
-# RET M
-# RET NC
-# RET NZ
-# RET P
-# RET PE
-# RET PO
-# RET Z
-# RETI
-# RETN
-# RL (HL)
-# RL (IX+1)
-# RL (IY+1)
-# RL B
-# RLA
-# RLC (HL)
-# RLC (IX+1)
-# RLC (IY+1)
-# RLC B
-# RLCA
-# RLD
-# RR (HL)
-# RR (IX+1)
-# RR (IY+1)
-# RR B
-# RRA
-# RRC (HL)
-# RRC (IX+1)
-# RRC (IY+1)
-# RRC B
-# RRCA
-# RRD
-# RST 0
-# RST 10H
-# RST 18H
-# RST 20H
-# RST 28H
-# RST 30H
-# RST 38H
-# RST 8H
-# SBC A,(HL)
-# SBC A,(IX+1)
-# SBC A,(IY+1)
-# SBC A,IXp
-# SBC A,IYq
-# SBC A,n
-# SBC A,B
-# SBC HL,BC
-# SBC HL,DE
-# SBC HL,HL
-# SBC HL,SP
-# SCF
-# SET 1,(HL)
-# SET 1,(IX+1)
-# SET 1,(IY+1)
-# SET 1,B
+"OUT": "The value of $2 is written to the port at the 16-bit address contained in the BC register pair. If a number is used instead of (C) then the value of A is written to the port whose address is formed by A in the high bits and the number in the low bits.",
+"OUTD": "B is decremented. A byte from the memory location pointed to by HL is written to the port at the 16-bit address contained in the BC register pair. Then HL is decremented. Note that the carry flag may be affected, contrary to documentation.",
+"OUTI": "B is decremented. A byte from the memory location pointed to by HL is written to the port at the 16-bit address contained in the BC register pair. Then HL is incremented. Note that the carry flag may be affected, contrary to documentation.",
+"POP": "Copies the two bytes from (SP) into $1, then increases SP by 2.",
+"PUSH": "Copies the contents of $1 into (SP), then increments SP by 2.",
+"RES": "Reset bit $1 of $2",
+"RET": "The top stack entry is popped into PC, resuming execution at that point.",
+"RET(2)": "Return to after the previous call if the flag in $1 matches.",
+"RETI": "Used at the end of a maskable interrupt service routine. The top stack entry is popped into PC, and signals an I/O device that the interrupt has finished, allowing nested interrupts (not a consideration on the TI).",
+"RETN": "Used at the end of a non-maskable interrupt service routine (located at 0066h) to pop the top stack entry into PC. The value of IFF2 is copied to IFF1 so that maskable interrupts are allowed to continue as before. NMIs are not enabled on the TI.",
+"RL": "The contents of the memory location pointed to by IY plus d are rotated left one bit position. The contents of bit 7 are copied to the carry flag and bit 0. The result is then stored in B.",
+"RLA": "The contents of A are rotated left one bit position. The contents of bit 7 are copied to the carry flag and the previous contents of the carry flag are copied to bit 0.",
+"RLC": "The contents of $1 are rotated left one bit position. The contents of bit 7 are copied to the carry flag and bit 0.",
+"RLCA": "The contents of A are rotated left one bit position. The contents of bit 7 are copied to the carry flag and bit 0.",
+"RLD": "The contents of the low-order nibble of (HL) are copied to the high-order nibble of (HL). The previous contents are copied to the low-order nibble of A. The previous contents are copied to the low-order nibble of (HL).",
+"RR": "The contents of $1 are rotated right one bit position. The contents of bit 0 are copied to the carry flag and the previous contents of the carry flag are copied to bit 7. ",
+"RRA": "The contents of A are rotated right one bit position. The contents of bit 0 are copied to the carry flag and the previous contents of the carry flag are copied to bit 7. ",
+"RRC": "The contents of $1 are rotated right one bit position. The contents of bit 0 are copied to the carry flag and bit 7.",
+"RRCA": "The contents of A are rotated right one bit position. The contents of bit 0 are copied to the carry flag and bit 7.",
+"RRD": "The contents of the low-order nibble of (HL) are copied to the low-order nibble of A. The previous contents are copied to the high-order nibble of (HL). The previous contents are copied to the low-order nibble of (HL).",
+"RST": "Similiar to calls, the RST commands jump to an address and execute code until encountering a return command. They are exactly like calls but only take up 1 byte (instead of 3). They are only capable of going to a few preset addresses. Refer to your specifc hardware for how the hardware handles these.",
+"SBC": "Subtracts the value in $2 and the carry flag from $1.",
+"SCF": "Sets the carry flag.",
+"SET": "Set bit $1 of $2",
 # SLA (HL)
 # SLA (IX+1)
 # SLA (IY+1)
@@ -170,10 +111,14 @@ def explain(opcode):
     # Some commands eg, CALL, have alternate versions: CALL 0x1234 and CALL nz,0x1234
     # This builds the ability to have a second comment in the list.
     # so CALL and CALL(2) will return different comments.
+
+    # n=2
+
     n=len(opcode.split(","))
     alt_opcode=f'{params[0]}({n})'
     if alt_opcode in opcode_comments:
         params[0]=alt_opcode
+
     # --------
     if "," in opcode: #A 3 part mnemonic eg ADD A,C
         params[1]=opcode.split(" ")[1].split(",")[0]
