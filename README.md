@@ -10,17 +10,19 @@ I wanted something similar for Z80 code and this project aims to do this.
 
 # Current status
 
-* Working, but janky.
+* Working, but now with 50% less jank.
 
 # Known Issues
 
 * Generated code causes z80asm to crash.
+* String detection disabled due to clobbering actual code.
+* LD label detection and naming is now not working.
 
 # ToDo
 
 [ ] Impliment command line parsing
 
-[ ] Add auto commenting
+[X] Add auto commenting (mostly done)
 
 
 # Dependencies
