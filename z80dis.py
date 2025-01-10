@@ -13,20 +13,36 @@ def mark_handled(start_address, size, data_type):
     for addr in range(start_address, start_address + size + 1):
         identified_areas[addr] = data_type
 
+def identified(address):
+    return identified_areas[address]
+
 def update_labels(addr, xref):
     labels[addr].add(xref)
 
 def lookup_label(addr):
     addr = int(addr)
-    return f'L_{addr:X}' if (addr in labels) and (addr>code_org and addr<(code_org+len(bin_data))) else hex(addr)
+    return f'{identified(addr)}_{addr:X}' if (addr in labels) and (addr>code_org and addr<(code_org+len(bin_data))) else hex(addr)
 
 def handle_data(b): #, loc, code_org):
-    if (b.operands[0][0] is b.operands[0][0].REG) or (b.operands[1][0] is b.operands[0][0].REG):
-        return None
-    if b.operands[0][0] is b.operands[0][0].ADDR_DEREF: #if not a JP (HL)
+    # print("Processing->",z80.disasm(b),b)
+    # print("Addr deref? ->",b.operands[0][0] is b.operands[0][0].ADDR_DEREF)
+    # print("Addr reg? ->",(b.operands[0][0] is b.operands[0][0].REG) or (b.operands[1][0] is b.operands[0][0].REG),b.operands[0][0],b.operands[1][0])
+    if b.operands[0][0] is b.operands[0][0].ADDR_DEREF: #if not a LD (HL)
+        # print("-->",b.operands[0][1])
         return b.operands[0][1]
-    else:
+    elif b.operands[0][0] is b.operands[0][0].ADDR_DEREF: #is a LD (0x1234),HL
+        # print("-->",b.operands[0][1])
+        return b.operands[0][1]
+    elif b.operands[1][0] is b.operands[1][0].IMM: #is a LD (0x1234),HL
+        # print("-->",b.operands[0][1])
         return b.operands[1][1]
+    if (b.operands[0][0] is b.operands[0][0].REG) or (b.operands[1][0] is b.operands[0][0].REG):
+        # print("--> None",b.operands[1][1])
+        return None #b.operands[1][1]
+    else:
+        # print("-->",b.operands[1][1])
+        return b.operands[1][1]
+    # print("--> All the way to none")
     return None
 
 def handle_jump(b, loc, code_org):
@@ -42,18 +58,43 @@ def handle_jump(b, loc, code_org):
             return relative_correction + b.operands[1][1]
     return None
 
+def findstring(memstart,memend):
+    # print("\n;Pass 2: Identify Strings ")
+    #needs rework. Should probably check all the LD A,() areas
+    pattern = re.compile(b'[ -~]{%d,}' % min_length)
+    data_area = bytearray(memend-code_org)
+
+    for loop in range(memstart-code_org,memend-code_org):
+        # print(loop,memstart-code_org,bin_data[loop])
+        if loop<=memend-code_org:
+            data_area[loop]=bin_data[loop]
+    for match in pattern.finditer(data_area):
+        start_position, end_position = match.start(), match.end()
+        matched_string = match.group().decode('ascii').replace('"', '",34,"').replace("\\", '", 0x5c, "')
+        found_string = f'"{matched_string}"'
+        strings_with_locations.append((found_string, start_position, end_position))
+
+    for s, start, end in strings_with_locations:
+        if re.search(r'[A-Za-z]{3,}', s):
+            str_locations[code_org+start] = s
+            str_sizes[code_org+start] = end - start
+            mark_handled(code_org + start, end - start, "D")
+
 code_org = 0xc000
 list_address = 1
 min_length = 3
 identified_areas = {}
 labels = defaultdict(set)
+strings_with_locations = []
+str_locations = {}
+str_sizes = {}
 
 # with open('RODOS219.ROM', 'rb') as f:
 with open('a.bin', 'rb') as f:
     bin_data = f.read()
 
 print(";Pass 0: Prep")
-identified_areas = {code_org + loc: "C" for loc in range(len(bin_data) + 10)} #Assume everything is code
+identified_areas = {code_org + loc: "" for loc in range(len(bin_data) + 1)} #Assume everything is code
 
 print(";Pass 1: Identify Data areas ", end="")
 decode_buffer = bytearray(6)
@@ -66,41 +107,35 @@ while loc < len(bin_data):
     b = z80.decode(decode_buffer, 0)
     data_addr = 0
     if b.op.name == 'LD':
-        if b.operands[1][0] is b.operands[1][0].IMM:
-            data_addr = b.operands[1][1]
-        elif b.operands[0][0] is b.operands[1][0].ADDR_DEREF:
-            data_addr = b.operands[0][1]
-        if code_org < data_addr < code_org + len(bin_data):
-            data_locations[data_addr] = "Found"
-            mark_handled(data_addr, 2, "D")
-        update_labels(data_addr, loc + code_org)
+        data_addr=handle_data(b)
+        # print(data_addr)
+        if data_addr is not None: # So something like LD A,(BC) or LD A,B
+            # print("Not none?")
+            # print(hex(data_addr))
+            tmp=z80.disasm(b)
+            tmp_data_addr=handle_data(b)
+            tmp_addr=hex(handle_data(b))
+            if (tmp_data_addr>=code_org) and (tmp_data_addr<=code_org+len(bin_data)):
+                mark_handled(tmp_data_addr, 2, "D")
+                update_labels(tmp_data_addr,code_org+loc)
+        #
+        # if b.operands[1][0] is b.operands[1][0].IMM:
+        #     data_addr = b.operands[1][1]
+        # elif b.operands[0][0] is b.operands[1][0].ADDR_DEREF:
+        #     data_addr = b.operands[0][1]
+        # if code_org < data_addr < code_org + len(bin_data):
+        #     data_locations[data_addr] = "Found"
+        #     mark_handled(data_addr, 2, "D")
+        # update_labels(data_addr, loc + code_org)
     loc += b.len
 
-print("\n;Pass 2: Identify Strings ")
-#needs rework. Should probably check all the LD A,() areas
-pattern = re.compile(b'[ -~]{%d,}' % min_length)
-strings_with_locations = []
-str_locations = {}
-str_sizes = {}
-#
-# for match in pattern.finditer(bin_data):
-#     start_position, end_position = match.start(), match.end()
-#     matched_string = match.group().decode('ascii').replace('"', '",34,"').replace("\\", '", 0x5c, "')
-#     found_string = f'"{matched_string}"'
-#     strings_with_locations.append((found_string, start_position, end_position))
-#
-# for s, start, end in strings_with_locations:
-#     if re.search(r'[A-Za-z]{3,}', s):
-#         str_locations[code_org+start] = s
-#         str_sizes[code_org+start] = end - start
-#         mark_handled(code_org + start, end - start, "D")
 
 
 print(";Pass 3: Build call/jump table ", end="")
 decode_buffer = bytearray(6)
 jump_locations = {}
 loc = 0
-
+mark_handled(loc, 1, "C") #as
 while loc < len(bin_data):
     codesize = min(4, len(bin_data) - loc)
     decode_buffer[:codesize] = bin_data[loc:loc + codesize]
@@ -120,19 +155,49 @@ while loc < len(bin_data):
             update_labels(jump_addr, loc+code_org)
         elif b.op is b.op.RET:
             mark_handled(loc, 1, "C")
-        else:
-            #Probably something like JP (IX)
-            mark_handled(loc, 1, "C")
-            # print("Error: Unhandled operator!!")
-            # print("OP is:\n",z80.disasm(b))
-            # print(b)
-            # exit()
+        # else:
+        #     #Probably something like JP (IX)
+        #     mark_handled(loc, 1, "C")
+        #     # print("Error: Unhandled operator!!")
+        #     # print("OP is:\n",z80.disasm(b))
+        #     # print(b)
+        #     # exit()
     loc += b.len
 
 print("\n;Part ??: Tagging all the areas")
 loc = 0
 last = "C"
+# print(labels)
+# print(identified_areas)
 
+
+print(";Part ??.a: Search for strings")
+id_sort=sorted(identified_areas)
+start=0
+end=0
+for data_area in (id_sort):
+    if data_area>code_org and data_area<(code_org+len(bin_data)):
+        # print(hex(data_area),identified_areas[data_area])
+        if (identified_areas[data_area]=="D") and (start==0):
+            # print(hex(data_area)," --> Data start", )
+            start=data_area
+        elif (identified_areas[data_area]=="C") and (start!=0):
+            end=data_area
+            findstring(start,end)
+            start=0
+            end==0
+
+#Wrap up the end of code
+if (end==0) and (start!=0):
+    end==len(bin_data)+code_org
+    findstring(start,end)
+
+
+
+print(";Part ??.b: Build structure")
+loc=0
+loc = 0
+last = "C"
 while loc < len(bin_data):
     identified_areas[code_org + loc] = identified_areas[code_org + loc] or last
     last = identified_areas[code_org + loc]
@@ -147,7 +212,8 @@ print(f"org {hex(code_org)}")
 while loc < len(bin_data):
     if loc + code_org in labels:
         print(";--------------------------------------")
-        print(f'L_{loc + code_org:X}:'+f'{" ":23} ; {" ":8}' , end='XREF=')
+        print()
+        print(f'{identified(loc + code_org)}_{loc + code_org:X}:'+f'{" ":23} ; {" ":8}' , end='XREF=')
         for tmp in labels[loc + code_org]:
             print(f'0x{tmp:X} ', end='')
         print("")
@@ -182,14 +248,17 @@ while loc < len(bin_data):
                 code_output(loc + code_org, tmp, list_address,dictionary.explain(z80.disasm(b)))
         elif b.op is b.op.LD:  #and b.operands[0][0] is not b.operands[0][0].REG_DEREF:
             data_addr=handle_data(b)
+            # print(data_addr)
             if data_addr is None: # So something like LD A,(BC) or LD A,B
                 code_output(loc + code_org, z80.disasm(b), list_address, dictionary.explain(z80.disasm(b)))
             else:
+                # print("Not none?")
                 tmp=z80.disasm(b)
-                tmp_number=handle_data(b)
+                tmp_data_addr=handle_data(b)
                 tmp_addr=hex(handle_data(b))
-                if (tmp_number>=code_org) and (tmp_number<=code_org+len(b)):
-                    ld_label=f'L_{handle_data(b):X}'
+                mark_handled(tmp_data_addr, 2, "D")
+                if (tmp_data_addr>=code_org) and (tmp_data_addr<=code_org+len(bin_data)):
+                    ld_label=f'{identified(handle_data(b))}_{handle_data(b):X}'
                     labelled=tmp.replace(tmp_addr, ld_label) #Convert inline hex to L_xxxx label
                 else:
                     labelled=tmp
