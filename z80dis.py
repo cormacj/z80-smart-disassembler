@@ -7,7 +7,7 @@ import re
 
 def code_output(address, text, display_address, comment="",added_details=""):
     addr = f"{hex(address)}: " if display_address else ""
-    print(f'    {text:25}  ;{addr} {added_details:17} {comment}')
+    print(f'    {text:25}  ;{addr} {added_details:20} {comment}')
 
 def add_extra_info(opcode,newline="X"):
     # print(opcode)
