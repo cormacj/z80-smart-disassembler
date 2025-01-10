@@ -5,9 +5,27 @@ from z80comments import dictionary
 from collections import defaultdict
 import re
 
-def code_output(address, text, display_address, comment=""):
+def code_output(address, text, display_address, comment="",added_details=""):
     addr = f"{hex(address)}: " if display_address else ""
-    print(f'    {text:25}  ;{addr} {comment}')
+    print(f'    {text:25}  ;{addr} {added_details:17} {comment}')
+
+def add_extra_info(opcode,newline="X"):
+    # print(opcode)
+    d=z80.decode(opcode,0)
+    # print(d)
+    data_dump=""
+    txt_dump=""
+    for loop in range(0, d.len):
+        data_dump=data_dump+f'{opcode[loop]:02x} '
+        if code_snapshot[loop]>31 and opcode[loop]<127:
+            txt_dump=txt_dump+chr(opcode[loop])
+        else:
+            txt_dump=txt_dump+"."
+    # print(f'---> {data_dump} "{txt_dump}"')
+    if newline=="":
+        return f'\n{" ":31};{" ":8} {data_dump} "{txt_dump}"'
+    else:
+        return f' {data_dump} "{txt_dump}"'
 
 def mark_handled(start_address, size, data_type):
     for addr in range(start_address, start_address + size + 1):
@@ -237,7 +255,7 @@ while loc < len(bin_data):
                 this_opcode=z80.disasm(b).split(",")[0]+","
             if jump_addr:
                 tmp = f"{this_opcode} " + lookup_label(jump_addr)
-                code_output(loc + code_org, tmp, list_address,dictionary.explain(tmp))
+                code_output(loc + code_org, tmp, list_address,dictionary.explain(tmp),add_extra_info(code_snapshot))
         elif b.op in (b.op.JP, b.op.CALL) and b.operands[0][0] is not b.operands[0][0].REG_DEREF:
             jump_addr = handle_jump(b, loc, code_org)
             if jump_addr:
@@ -245,12 +263,12 @@ while loc < len(bin_data):
                 if len(z80.disasm(b).split(","))>1: #conditional jumps and calls
                     this_opcode=z80.disasm(b).split(",")[0]+","
                 tmp = f"{this_opcode} " + lookup_label(jump_addr)
-                code_output(loc + code_org, tmp, list_address,dictionary.explain(z80.disasm(b)))
+                code_output(loc + code_org, tmp, list_address,dictionary.explain(z80.disasm(b)),add_extra_info(code_snapshot))
         elif b.op is b.op.LD:  #and b.operands[0][0] is not b.operands[0][0].REG_DEREF:
             data_addr=handle_data(b)
             # print(data_addr)
             if data_addr is None: # So something like LD A,(BC) or LD A,B
-                code_output(loc + code_org, z80.disasm(b), list_address, dictionary.explain(z80.disasm(b)))
+                code_output(loc + code_org, z80.disasm(b), list_address, dictionary.explain(z80.disasm(b)),add_extra_info(code_snapshot))
             else:
                 # print("Not none?")
                 tmp=z80.disasm(b)
@@ -266,7 +284,7 @@ while loc < len(bin_data):
                 if data_addr in labels:
                     if handle_data(b) in str_locations:
                         str_for_comment=" - References: "+str_locations[handle_data(b)]
-                code_output(loc + code_org, labelled, list_address,dictionary.explain(labelled)+" "+str_for_comment)
+                code_output(loc + code_org, labelled, list_address,dictionary.explain(labelled)+" "+str_for_comment,add_extra_info(code_snapshot))
         else:
-            code_output(loc + code_org, z80.disasm(b), list_address,dictionary.explain(z80.disasm(b)))
+            code_output(loc + code_org, z80.disasm(b), list_address,dictionary.explain(z80.disasm(b)),add_extra_info(code_snapshot))
         loc += b.len
