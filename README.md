@@ -16,15 +16,17 @@ I wanted something similar for Z80 code and this project aims to do this.
 
 * Generated code causes z80asm to crash.
 
- * If a string area is parsed as code and jumps data is generated, these jumps are not cleared when the string is later cleared to be a string 
+* Some code areas are still being handled as data and breaking recompilation.
 
 # ToDo
 
-[ ] Impliment command line parsing
+[X] Impliment command line parsing
 
 [X] Add auto commenting (mostly done)
 
 [ ] Built a templating function, eg so Amstrad ROMs can be properly decoded.
+
+[ ] Improve Ssring and data detection methods
 
 # Dependencies
 
