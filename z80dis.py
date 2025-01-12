@@ -4,10 +4,57 @@ from z80dis import z80
 from z80comments import dictionary
 from collections import defaultdict
 import re
+import sys
+
+myversion = "0.50"
+
+def parse_arguments():
+    # Build out the parameter list.
+    # There is a lot here so I'm using ArgumentParser
+
+    import argparse
+    parser = argparse.ArgumentParser(description ='A Smart Z80 reverse assembler')
+
+    parser.add_argument(dest ='filename', metavar ='filename',action = 'store')
+    # parser.add_argument('-p', '--pat', metavar ='pattern',
+    #                     required = True, dest ='patterns',
+    #                     action ='append',
+    #                     help ='text pattern to search for')
+
+    parser.add_argument('-v', dest ='verbose',
+                        action ='store_true', help ='verbose mode')
+    parser.add_argument('-o', dest ='outfile',
+                        action ='store', help ='output file')
+    parser.add_argument('--style', dest ='style',
+                        action ='store', choices = {'asm', 'lst'},
+                        default ='asm', help ='asm produces a file that can be assembled. lst is a dump style output')
+    parser.add_argument('--xref', dest ='xref',
+                        action ='store', choices = {'off', 'on'},
+                        default ='on', help ='Enable or disable cross references for labels')
+    parser.add_argument('--labeltype', dest ='labeltype',
+                        action ='store', choices = {'1', '2'},
+                        default ='1', help ='1: Uses short name eg D_A123 or C_A345  2: Uses full names, eg data_A123 or code_A123')
+    parser.add_argument("-d", "--debug", action="store_true", help=argparse.SUPPRESS)
+    args = parser.parse_args()
+    return args  # paramaterize everything
+
+def validate_arguments(argslist):
+    # Ensure that supplied arguments are valid
+
+    if argslist.debug:  # pragma: no cover
+        print("--- debug output ---")
+        print(f"  {argslist=}")
+        # print(f' {argslist.filename=}')
+        # print(f'  {args.goodbye=}, {args.name=}')
+        print("")
 
 def code_output(address, text, display_address, comment="",added_details=""):
+
     addr = f"{hex(address)}: " if display_address else ""
-    print(f'    {text:25}  ;{addr} {added_details:20} {comment}')
+    if args.style=="asm":
+        print(f'    {text:25}  ;{addr} {added_details:20} {comment}')
+    else:
+        print(f'{addr} {added_details:20}    {text:25}  ; {comment}')
 
 def add_extra_info(opcode,newline="X"):
     # print(opcode)
@@ -37,9 +84,21 @@ def identified(address):
 def update_labels(addr, xref):
     labels[addr].add(xref)
 
-def lookup_label(addr):
+def lookup_label(addr,prettyprint=""):
     addr = int(addr)
-    return f'{identified(addr)}_{addr:X}' if (addr in labels) and (addr>code_org and addr<(code_org+len(bin_data))) else hex(addr)
+    result=identified(addr)
+    match args.labeltype:
+        case '1':
+            result=identified(addr)
+        case '2':
+            if identified(addr)=="C":
+                result="code"
+            else:
+                result="data"
+    if prettyprint!="":
+        return f'{result}_{addr:X}:{" ":9}' if (addr in labels) and (addr>=code_org and addr<(code_org+len(bin_data))) else hex(addr)
+    else:
+        return f'{result}_{addr:X}' if (addr in labels) and (addr>=code_org and addr<(code_org+len(bin_data))) else hex(addr)
 
 def handle_data(b): #, loc, code_org):
     # print("Processing->",z80.disasm(b),b)
@@ -106,9 +165,22 @@ labels = defaultdict(set)
 strings_with_locations = []
 str_locations = {}
 str_sizes = {}
+style="asm"
+
+
+# First, lets get our parameters sorted out:
+args = parse_arguments()
+
+# Now check the command line arguments to make sure they are valid
+validate_arguments(args)
+
+if args.xref=="on":
+    xrefstr="XREF: "
+else:
+    xrefstr=""
 
 # with open('RODOS219.ROM', 'rb') as f:
-with open('a.bin', 'rb') as f:
+with open(args.filename, 'rb') as f:
     bin_data = f.read()
 
 print(";Pass 0: Prep")
@@ -167,7 +239,7 @@ while loc < len(bin_data):
         # else:
         #     relative_correction=0
         # print("jump:",jump_addr)
-        if jump_addr:
+        if jump_addr and jump_addr not in labels: #Its a jump, but area is already data
             jump_locations[jump_addr] = hex(jump_addr)
             mark_handled(jump_addr, 1, "C")
             update_labels(jump_addr, loc+code_org)
@@ -225,16 +297,32 @@ print(";Part ??: Code:\n\n")
 code_snapshot = bytearray(8)
 loc = 0
 
-print(f"org {hex(code_org)}")
+if args.style=="asm":
+    print(f"org {hex(code_org)}")
+else:
+    print(f"     org {hex(code_org)}")
 
 while loc < len(bin_data):
     if loc + code_org in labels:
-        print(";--------------------------------------")
-        print()
-        print(f'{identified(loc + code_org)}_{loc + code_org:X}:'+f'{" ":23} ; {" ":8}' , end='XREF=')
-        for tmp in labels[loc + code_org]:
-            print(f'0x{tmp:X} ', end='')
-        print("")
+        if args.style=="asm":
+            print(";--------------------------------------")
+            print()
+            # print(f'{lookup_label(loc + code_org)}_{loc + code_org:X}:'+f'{" ":23} ; {" ":8}' , end='XREF=')
+            print(f'{lookup_label(loc + code_org,1):30} ; {" ":8} {xrefstr}' , end='')
+            if args.xref=="on":
+                for tmp in labels[loc + code_org]:
+                    print(f'0x{tmp:X} ', end='')
+            print("")
+        else:
+            # f'    {text:25}  ;{addr} {added_details:20} {comment}')
+            print(";----------------------------------------------------------------------------")
+            print()
+            print(f'{"":24}     {lookup_label(loc + code_org,1):30} ; {xrefstr}' , end='')
+            if args.xref=="on":
+                for tmp in labels[loc + code_org]:
+                    print(f'0x{tmp:X} ', end='')
+            print("")
+
     codesize = min(4, len(bin_data) - loc)
     if identified_areas[code_org + loc] == "D" and (loc + code_org) in str_locations:
         code_output(loc + code_org, "DEFB " + str_locations[code_org+loc], list_address)
@@ -242,7 +330,7 @@ while loc < len(bin_data):
     elif identified_areas[code_org + loc] == "D":
         tmp = bin_data[loc]
         out_tmp = f'"{chr(tmp)}"' if 31 < tmp < 127 else f"('{chr(tmp - 0x80)}') + 0x80" if 31 < (tmp - 0x80) < 127 else hex(tmp)
-        code_output(loc + code_org, "DEFB " + out_tmp, list_address)
+        code_output(loc + code_org, "DEFB " + hex(tmp), list_address, out_tmp)
         loc += 1
     elif identified_areas[code_org + loc] == "C":
         code_snapshot[:codesize] = bin_data[loc:loc + codesize]
@@ -276,7 +364,8 @@ while loc < len(bin_data):
                 tmp_addr=hex(handle_data(b))
                 mark_handled(tmp_data_addr, 2, "D")
                 if (tmp_data_addr>=code_org) and (tmp_data_addr<=code_org+len(bin_data)):
-                    ld_label=f'{identified(handle_data(b))}_{handle_data(b):X}'
+                    # ld_label=f'{identified(handle_data(b))}_{handle_data(b):X}'
+                    ld_label=lookup_label(handle_data(b))
                     labelled=tmp.replace(tmp_addr, ld_label) #Convert inline hex to L_xxxx label
                 else:
                     labelled=tmp
