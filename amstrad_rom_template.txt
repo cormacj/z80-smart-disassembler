@@ -1,13 +1,32 @@
-org 0x0c000
-;start address,end address, data type, label
-;data types:
+; Comments start with ";"
+; template lines are:
+;start address, end address, data type, label
+;
+; data types can be one of these:
 ; b = byte
 ; w = word
 ; s = string
 ; c = code
+; p = pointer
+;
+; You can refer to a pointer by enclosing the number in ()
+;
+; This is an example template for an Amstrad RODOS rom.
+;
+; Standard start of rom things
 0xc000,0xc000,b,ROM_TYPE
 0xc001,0xc001,b,ROM_MAJOR
 0xc002,0xc002,b,ROM_MARK
 0xc003,0xc003,b,ROM_MOD
-0xc004,0xc005,w,CMD_TABLE_PTR
-0xc006,(CMD_TABLE_PTR),c,RSX_JUMPS
+
+;Now tag the pointer to the command names table
+0xc004,0xc004,p,CMD_TABLE_PTR
+
+;Next I'm marking everything between 0xc006 and the command table as code (0xc006 will be labelled as JUMP_TABLE)
+0xc006,(0xc004),c,JUMP_TABLE
+
+;Use the pointer method to tag the ROM_INIT code
+(0xc007),(0xc007),c,ROM_INIT
+
+;Here everthing between the pointer to the command table, and the address of the JP ROM_INIT address is strings
+(0xc004),(0xc007),s,ROM_INIT

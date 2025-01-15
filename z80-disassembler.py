@@ -1,13 +1,128 @@
 #!/usr/bin/env python3
 
-from z80dis import z80
-from z80comments import dictionary
-from collections import defaultdict
+import csv
 import re
-import sys
+from collections import defaultdict
+from typing import NamedTuple
 
+
+from z80comments import dictionary
+from z80dis import z80
+
+# --- Globals -----
+list_address = 1
+min_length = 3
+identified_areas = {}
+labels = defaultdict(set)
+template_labels = defaultdict(set)
+strings_with_locations = []
+str_locations = {}
+str_sizes = {}
+style = "asm"
 myversion = "0.50"
 
+class Pointer(NamedTuple):
+    ispointer: bool
+    source: int
+    destination: int
+
+def check_for_pointer(addr):
+    #Input:
+    # Example: addr = 0xc000
+    # Returns: Pointer.ispointer=False, pointer.source=0xc000, pointer.destination=0xc0000
+    #
+    # Example: (0xc000) (in the binary it points to 0xd123)
+    # Returns: Pointer.ispointer=True, pointer.source=0xc000, pointer.destination=0xd123
+
+    ptr=Pointer
+
+    if addr[0]=="(":
+        # Yup, we have a pointer
+        p_addr=to_number(addr.replace("(","").replace(")",""))-code_org
+        ptr.ispointer=True
+        ptr.source=to_number(p_addr)
+        ptr.destination=(bin_data[p_addr+1]*0x100)+(bin_data[p_addr]) #Get the address where the pointer is pointing to
+        print("check for ptr:",hex(p_addr),hex(ptr.destination))
+        return ptr
+    else:
+        #Not a pointer, just a number
+        ptr.source=to_number(addr)
+        ptr.destination=to_number(addr)
+        ptr.ispointer=False
+    return ptr
+
+def process_template(filename):
+    # Example template will look like this:
+    # ;roms are org 0x0c000
+    # ;start address, data type, label
+    # ;data types:
+    # ; b = byte
+    # ; w = word
+    # ; s = string
+    # ; c = code
+    # ; p = pointer
+    # 0xc000,0xc000,b,ROM_TYPE
+    # 0xc001,0xc001,b,ROM_MAJOR
+    # 0xc002,0xc002,b,ROM_MARK
+    # 0xc003,0xc003,b,ROM_MOD
+    # 0xc004,0xc004,p,CMD_TABLE_PTR
+    # 0xc006,(0xc004),c,ROM_INIT
+    #
+    # Comments are lines that start with ";"
+
+    with open(filename, mode ='r') as file:
+        csvFile = csv.reader(file)
+        for lines in csvFile:
+            print(f'->{lines}<-')
+            if (lines!=[]):
+                if (lines[0][0]!=";"): #If not a comment or blank
+                    print(lines)
+                    start_template=check_for_pointer(lines[0])
+                    print(hex(start_template.source),hex(start_template.destination))
+                    end_template=check_for_pointer(lines[1])
+                    print(hex(end_template.source),hex(end_template.destination))
+                    # Next check for pointers and assign addresses as needed.
+                    if start_template.ispointer:
+                        begin=start_template.destination
+                    else:
+                        begin=start_template.source
+                    if end_template.ispointer:
+                        end=end_template.destination
+                    else:
+                        end=end_template.source
+                    print("begin,end:",hex(begin),hex(end))
+                    datatype=lines[2]
+                    label=lines[3]
+                    print(f'Tagging {label}: {hex(begin)}')
+                    template_labels[begin]=label+":"
+                    addr=begin
+                    match datatype.lower():
+                        case 'b':
+                            for loop in range(begin-0xc000,end-0xc000):
+                                print(loop)
+                            mark_handled(addr,1,"D")
+                        case "w":
+                            mark_handled(addr,2,"D")
+                        case "c":
+
+                            mark_handled(addr,3,"C")
+                        case "p":
+                            mark_handled(addr,2,"D")
+                            code_loc=begin #Get the address where the pointer is pointing to
+                            mark_handled(code_loc,2,"D")
+                        case _:
+                            print("Unknown data type: ",datatype.lower())
+                            exit
+
+
+def to_number(n):
+    try:
+        return int(str(n), 0)
+    except:
+        try:
+            return int('0x' + n, 0)
+        except:
+            return float(n)
 
 def parse_arguments():
     # Build out the parameter list.
@@ -25,6 +140,8 @@ def parse_arguments():
 
     parser.add_argument("-v", dest="verbose", action="store_true", help="verbose mode")
     parser.add_argument("-o", dest="outfile", action="store", help="output file")
+    parser.add_argument("-t", dest="templatefile", action="store", help="template file")
+
     parser.add_argument(
         "--style",
         dest="style",
@@ -33,6 +150,14 @@ def parse_arguments():
         default="asm",
         help="asm produces a file that can be assembled. lst is a dump style output",
     )
+    parser.add_argument(
+        "-l","--load",
+        dest="loadaddress",
+        action="store",
+        default="0x100",
+        help="Specify where in RAM the code loads",
+    )
+
     parser.add_argument(
         "--xref",
         dest="xref",
@@ -56,7 +181,6 @@ def parse_arguments():
 
 def validate_arguments(argslist):
     # Ensure that supplied arguments are valid
-
     if argslist.debug:  # pragma: no cover
         print("--- debug output ---")
         print(f"  {argslist=}")
@@ -95,6 +219,7 @@ def add_extra_info(opcode, newline="X"):
 
 def mark_handled(start_address, size, data_type):
     for addr in range(start_address, start_address + size + 1):
+        # if identified_areas[addr]=="":
         identified_areas[addr] = data_type
 
 
@@ -202,22 +327,14 @@ def findstring(memstart, memend):
             mark_handled(code_org + start, end - start, "D")
 
 
-code_org = 0xC000
-list_address = 1
-min_length = 3
-identified_areas = {}
-labels = defaultdict(set)
-strings_with_locations = []
-str_locations = {}
-str_sizes = {}
-style = "asm"
-
-
 # First, lets get our parameters sorted out:
 args = parse_arguments()
 
 # Now check the command line arguments to make sure they are valid
 validate_arguments(args)
+print(args.loadaddress)
+
+code_org = to_number(args.loadaddress)
 
 if args.xref == "on":
     xrefstr = "XREF: "
@@ -227,6 +344,7 @@ else:
 # with open('RODOS219.ROM', 'rb') as f:
 with open(args.filename, "rb") as f:
     bin_data = f.read()
+
 
 print(";Pass 0: Prep")
 identified_areas = {
@@ -349,18 +467,29 @@ print(";Part ??: Code:\n\n")
 code_snapshot = bytearray(8)
 loc = 0
 
+#--------------------- Main Section -------------------------
+
 if args.style == "asm":
     print(f"org {hex(code_org)}")
 else:
     print(f"     org {hex(code_org)}")
 
+
+if args.templatefile is not None:
+    process_template(args.templatefile)
+
 while loc < len(bin_data):
-    if loc + code_org in labels:
+    if (loc + code_org in labels) or (loc+code_org in template_labels):
+        if (loc+code_org in template_labels):
+            labelname=template_labels[loc + code_org]
+        else:
+            labelname=lookup_label(loc + code_org,1)
+
         if args.style == "asm":
             print(";--------------------------------------")
             print()
             # print(f'{lookup_label(loc + code_org)}_{loc + code_org:X}:'+f'{" ":23} ; {" ":8}' , end='XREF=')
-            print(f'{lookup_label(loc + code_org,1):30} ; {" ":8} {xrefstr}', end="")
+            print(f'{labelname:30} ; {" ":8} {xrefstr}', end="")
             if args.xref == "on":
                 for tmp in labels[loc + code_org]:
                     print(f"0x{tmp:X} ", end="")
@@ -372,7 +501,7 @@ while loc < len(bin_data):
             )
             print()
             print(
-                f'{"":24}     {lookup_label(loc + code_org,1):30} ; {xrefstr}', end=""
+                f'{"":24}     {labelname:30} ; {xrefstr}', end=""
             )
             if args.xref == "on":
                 for tmp in labels[loc + code_org]:
