@@ -35,7 +35,7 @@ def check_for_pointer(addr):
     # Returns: Pointer.ispointer=True, pointer.source=0xc000, pointer.destination=0xd123
 
     ptr=Pointer
-
+    print("called:",addr)
     if addr[0]=="(":
         # Yup, we have a pointer
         p_addr=to_number(addr.replace("(","").replace(")",""))-code_org
@@ -69,23 +69,31 @@ def process_template(filename):
     # 0xc006,(0xc004),c,ROM_INIT
     #
     # Comments are lines that start with ";"
+    begin=0
+    end=0
+    start_template = Pointer
+    end_template = Pointer
 
     with open(filename, mode ='r') as file:
         csvFile = csv.reader(file)
         for lines in csvFile:
+            print("-------------------------------------")
             print(f'->{lines}<-')
             if (lines!=[]):
                 if (lines[0][0]!=";"): #If not a comment or blank
                     print(lines)
                     start_template=check_for_pointer(lines[0])
-                    print(hex(start_template.source),hex(start_template.destination))
-                    end_template=check_for_pointer(lines[1])
-                    print(hex(end_template.source),hex(end_template.destination))
-                    # Next check for pointers and assign addresses as needed.
                     if start_template.ispointer:
                         begin=start_template.destination
+                        print("is pointer",hex(begin))
                     else:
                         begin=start_template.source
+                        print("NOT pointer",hex(begin))
+
+                    print("***start***",hex(start_template.source),hex(start_template.destination))
+                    end_template=check_for_pointer(lines[1])
+                    print("***end***",hex(end_template.source),hex(end_template.destination))
+                    # Next check for pointers and assign addresses as needed.
                     if end_template.ispointer:
                         end=end_template.destination
                     else:
@@ -104,7 +112,9 @@ def process_template(filename):
                         case "w":
                             mark_handled(addr,2,"D")
                         case "c":
-
+                            print("Code:",hex(begin),hex(end))
+                            for loop in range(start,end):
+                                mark_handled(loop-code_org,1,"C")
                             mark_handled(addr,3,"C")
                         case "p":
                             mark_handled(addr,2,"D")
@@ -391,7 +401,7 @@ print(";Pass 3: Build call/jump table ", end="")
 decode_buffer = bytearray(6)
 jump_locations = {}
 loc = 0
-mark_handled(loc, 1, "C")  # as
+mark_handled(loc, 1, "C")
 while loc < len(bin_data):
     codesize = min(4, len(bin_data) - loc)
     decode_buffer[:codesize] = bin_data[loc : loc + codesize]
