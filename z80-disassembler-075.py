@@ -415,13 +415,28 @@ with open(args.filename, "rb") as f:
 # Copy to the proper location and prep for processing
 loc=0
 while loc < len(bin_data):
-    debug(f'!! {hex(loc)}-->{hex(code_org+loc)} : {hex(bin_data[loc])}')
+    if loc>(len(bin_data)-5):
+        debug(f'!! {hex(loc)}-->{hex(code_org+loc)} : {hex(bin_data[loc])}')
     code[code_org+loc][0]=bin_data[loc] # Copy the code to the proper address
     code[code_org+loc][1]=""
     code[code_org+loc][2]=""
     # print("copying ",bin_data[loc]," to ",hex(code_org+loc),". Result is ",code[code_org+loc][0])
     loc += 1
 
+#Add padding because max(code) causes breaking. Grrr. Grumble, Grumble.
+code[code_org+loc][0]=0 # Copy the code to the proper address
+code[code_org+loc][1]=""
+code[code_org+loc][2]=""
+
+# print(hex(loc))
+# print(len(bin_data))
+# print(hex(len(bin_data)+0xc000))
+# print(hex(min(code)))
+# print(hex(max(code)))
+# print(max(code)-min(code))
+# for n in code:
+#     if n>(0xc000+len(bin_data)-5):
+#         debug(f'{hex(n)}: {hex(code[n][0])}')
 
 # print(";Pass 0: Prep")
 # identified_areas = {
@@ -436,7 +451,7 @@ jump_locations = {}
 
 loc = min(code)
 end_of_code=max(code)
-print(hex(end_of_code))
+
 while loc <= end_of_code:
     # if loc>(end_of_code-5):
     #     print(hex(loc),"-->",hex(end_of_code))
@@ -534,6 +549,7 @@ if args.templatefile is not None:
 
 # dump_code_array()
 program_counter=min(code)
+
 while program_counter < max(code):
     debug("loc=",hex(program_counter),hex(max(code)))
     #
@@ -689,6 +705,9 @@ while program_counter < max(code):
                 program_counter += b.len
         else:
             debug("Fell through to the end")
+            # dump_code_array()
+            # print(hex(program_counter))
+            # print(z80.disasm(b))
             code_output(
                 program_counter,
                 z80.disasm(b),
