@@ -42,6 +42,20 @@ class Pointer(NamedTuple):
     source: int
     destination: int
 
+def get_from_code(addr,idx):
+    # print("!!!!!")
+    # print(addr)
+    # print(hex(max(code)),hex(addr))
+    debug(f"{addr:04x}: {idx}")
+    if is_in_code(addr):
+        return code[addr][idx]
+    else:
+        return ""
+
+def dump_code_array():
+    for loop in range(min(code),max(code)):
+        print(f'{hex(loop)}: {code[loop][0]:02x} {code[loop][1]} {code[loop][2]}')
+
 def debug(message,arg1="",arg2="",arg3=""):
     if args.debug:
         print("*debug* ",message,arg1,arg2,arg3)
@@ -247,13 +261,15 @@ def add_extra_info(opcode, newline="X"):
         return f' {data_dump} "{txt_dump}"'
 
 def is_in_code(addr):
-    if (addr>=code_org) and (addr<=max(code)):
+    # debug(f'Min: {min(code):04x} Max: {max(code):04x}')
+    if (addr>=min(code)) and (addr<=(max(code))):
         return True
     else:
         return False
 
 def mark_handled(start_address, size, data_type):
     #Only mark within out code
+    update_label_name(start_address,data_type)
     if is_in_code(start_address):
         for addr in range(start_address, start_address + size + 1):
             # if identified_areas[addr]=="":
@@ -267,10 +283,13 @@ def identified(address):
     # print("data is: ",code[address])
     return code[address][1]
 
+def update_label_name(addr, type):
+    if is_in_code(addr):
+        code[addr][2]=f'{type}_{addr:04X}'
+    # labels[addr].add(xref)
 
 def update_labels(addr, xref):
     labels[addr].add(xref)
-
 
 def lookup_label(addr, prettyprint=""):
     debug("Lookup label at addr=",hex(addr))
@@ -396,6 +415,7 @@ with open(args.filename, "rb") as f:
 # Copy to the proper location and prep for processing
 loc=0
 while loc < len(bin_data):
+    debug(f'!! {hex(loc)}-->{hex(code_org+loc)} : {hex(bin_data[loc])}')
     code[code_org+loc][0]=bin_data[loc] # Copy the code to the proper address
     code[code_org+loc][1]=""
     code[code_org+loc][2]=""
@@ -416,8 +436,10 @@ jump_locations = {}
 
 loc = min(code)
 end_of_code=max(code)
+print(hex(end_of_code))
 while loc <= end_of_code:
-
+    # if loc>(end_of_code-5):
+    #     print(hex(loc),"-->",hex(end_of_code))
     #Build a decoding buffer
     codesize = min(4, end_of_code-loc)
     for loop in range(0,codesize):
@@ -425,19 +447,21 @@ while loc <= end_of_code:
     b = z80.decode(decode_buffer, 0)
     data_addr = 0
     if b.op.name == "LD":
+        # print("LD process")
         data_addr = handle_data(b)
         # print(data_addr)
         if data_addr is not None:  # So something like LD A,(BC) or LD A,B
             # print("Not none?")
+            # print(hex(loc))
+            # print(z80.disasm(b))
             # print(hex(data_addr))
             tmp = z80.disasm(b)
             tmp_data_addr = handle_data(b)
             tmp_addr = hex(handle_data(b))
-            if (tmp_data_addr >= code_org) and (
-                tmp_data_addr <= code_org + len(bin_data)
-            ):
+            # print(hex(tmp_data_addr))
+            if is_in_code(tmp_data_addr):
                 mark_handled(tmp_data_addr, 2, "D")
-                update_labels(tmp_data_addr, code_org + loc)
+                update_labels(tmp_data_addr, loc)
     elif (b.op.name in ("JR", "CALL", "JP", "DJNZ")) and (b.operands[0][0] is not b.operands[0][0].REG_DEREF):
         jump_addr = handle_jump(b, loc)
         # debug("JP to ",hex(jump_addr))
@@ -450,6 +474,7 @@ while loc <= end_of_code:
             # debug("JP to ",hex(jump_addr))
             jump_locations[jump_addr] = hex(jump_addr)
             mark_handled(jump_addr, 1, "C")
+            # mark_handled(loc, 1, "C")
             update_labels(jump_addr, loc)
         elif b.op is b.op.RET:
             mark_handled(loc, 1, "C")
@@ -478,22 +503,26 @@ while loc <= end_of_code:
 #     findstring(start, end)
 #
 
-# print(";Part ??.b: Build structure")
-# loc = 0
-# loc = 0
-# last = "C"
-# while loc < len(bin_data):
-#     identified_areas[code_org + loc] = identified_areas[code_org + loc] or last
-#     last = identified_areas[code_org + loc]
-#     loc += 1
-#
-# print(";Part ??: Code:\n\n")
-# code_snapshot = bytearray(8)
-# loc = 0
+print(";Part ??.b: Build structure")
+loc = min(code)
+last = "C"
+while loc <= max(code):
+    # debug("Before:",code[loc][1])
+    code[loc][1] = code[loc][1] or last
+    # debug("After:",code[loc][1])
+    last = code[loc][1]
+    loc += 1
+
+print(";Part ??: Code:\n\n")
+code_snapshot = bytearray(8)
+loc = 0
 
 #--------------------- Main Section -------------------------
 
+# dump_code_array()
+
 # print("disasm")
+print("")
 if args.style == "asm":
     print(f"org {hex(code_org)}")
 else:
@@ -503,23 +532,23 @@ else:
 if args.templatefile is not None:
     process_template(args.templatefile)
 
-loc=min(code)
-
-while loc <= max(code):
-    # debug("loc=",hex(loc))
+# dump_code_array()
+program_counter=min(code)
+while program_counter < max(code):
+    debug("loc=",hex(program_counter),hex(max(code)))
     #
     # First, handle labels
     #Build a decoding buffer
-    codesize = min(4, end_of_code-loc)
+    codesize = min(4, end_of_code - program_counter)
     for loop in range(0,codesize):
-        decode_buffer[loop] = code[loop+loc][0]
+        decode_buffer[loop] = code[loop+program_counter][0]
     b = z80.decode(decode_buffer, 0)
 
-    if (loc in labels) or (loc in template_labels):
-        if (loc in template_labels):
-            labelname=template_labels[loc]
+    if (program_counter in labels) or (program_counter in template_labels):
+        if (program_counter in template_labels):
+            labelname=template_labels[program_counter]
         else:
-            labelname=lookup_label(loc,1)
+            labelname=lookup_label(program_counter,1)
 
         if args.style == "asm":
             print(";--------------------------------------")
@@ -527,7 +556,7 @@ while loc <= max(code):
             # print(f'{lookup_label(loc + code_org)}_{loc + code_org:X}:'+f'{" ":23} ; {" ":8}' , end='XREF=')
             print(f'{labelname:30} ; {" ":8} {xrefstr}', end="")
             if args.xref == "on":
-                for tmp in labels[loc]:
+                for tmp in labels[program_counter]:
                     print(f"0x{tmp:X} ", end="")
             print("")
         else:
@@ -540,77 +569,95 @@ while loc <= max(code):
                 f'{"":24}     {labelname:30} ; {xrefstr}', end=""
             )
             if args.xref == "on":
-                for tmp in labels[loc]:
+                for tmp in labels[program_counter]:
                     print(f"0x{tmp:X} ", end="")
             print("")
 
     #Next, process code and data
     # codesize = min(4, max(code) - loc)
     # b = z80.decode(code_snapshot, 0)
-
-    if identified(loc) == "D" and (loc in str_locations):
+    # print("--------------->",hex(loc))
+    if identified(program_counter) == "D" and (program_counter in str_locations):
+        #Its a string!
+        debug("D - 1")
         code_output(
-            loc, "DEFB " + str_locations[loc], list_address
+            program_counter, "DEFB " + str_locations[program_counter], list_address
         )
-        loc += str_sizes[loc]
-    elif identified(loc) == "D":
-        tmp = code[loc][0]
-        out_tmp = (
-            f'"{chr(tmp)}"'
-            if 31 < tmp < 127
-            else (
-                f"('{chr(tmp - 0x80)}') + 0x80" if 31 < (tmp - 0x80) < 127 else hex(tmp)
+        #FIXME is this tripping too many PC increments?
+        # debug("PC Bump 3")
+        # program_counter += str_sizes[program_counter]
+    elif identified(program_counter) == "D":
+        debug("D - 2")
+        if is_in_code(program_counter):
+            debug("D - 3")
+            tmp = get_from_code(program_counter,0) #code[loc][0]
+            out_tmp = (
+                f'"{chr(tmp)}"'
+                if 31 < tmp < 127
+                else (
+                    f"('{chr(tmp - 0x80)}') + 0x80" if 31 < (tmp - 0x80) < 127 else hex(tmp)
+                )
             )
-        )
-        code_output(loc, "DEFB " + hex(tmp), list_address, out_tmp)
-        loc += 1
-    elif identified(loc) == "C":
+            code_output(program_counter, "DEFB " + hex(tmp), list_address, out_tmp)
+            debug("PC Bump")
+            program_counter += 1 #FIXME - tripping PC too much?
+    elif identified(program_counter) == "C":
+        debug("C - 1")
         # code_snapshot[:codesize] = bin_data[loc : loc + codesize]
         b = z80.decode(decode_buffer, 0)
         conds = z80.disasm(b).split(",")[0] + ","
         if b.op in (b.op.JR, b.op.DJNZ):
-            jump_addr = handle_jump(b, loc)
+            debug("C - 1a")
+            debug("Processing relative jump")
+            jump_addr = handle_jump(b, program_counter)
             this_opcode = b.op.name
             if len(z80.disasm(b).split(",")) > 1:  # conditional jumps and calls
                 this_opcode = z80.disasm(b).split(",")[0] + ","
             if jump_addr:
                 tmp = f"{this_opcode} " + lookup_label(jump_addr)
                 code_output(
-                    loc,
+                    program_counter,
                     tmp,
                     list_address,
                     explain.code(tmp),
                     add_extra_info(decode_buffer),
                 )
+                program_counter += b.len
         elif (
             b.op in (b.op.JP, b.op.CALL)
             and b.operands[0][0] is not b.operands[0][0].REG_DEREF
         ):
-            jump_addr = handle_jump(b, loc)
+            debug("C - 2")
+            jump_addr = handle_jump(b, program_counter)
+            debug("Processing jump")
             if jump_addr:
                 this_opcode = b.op.name
                 if len(z80.disasm(b).split(",")) > 1:  # conditional jumps and calls
                     this_opcode = z80.disasm(b).split(",")[0] + ","
                 tmp = f"{this_opcode} " + lookup_label(jump_addr)
                 code_output(
-                    loc + code_org,
+                    program_counter,
                     tmp,
                     list_address,
                     explain.code(z80.disasm(b)),
                     add_extra_info(decode_buffer),
                 )
+                program_counter += b.len
         elif b.op is b.op.LD:  # and b.operands[0][0] is not b.operands[0][0].REG_DEREF:
+            debug("C - 3")
             data_addr = handle_data(b)
             # print(data_addr)
             if data_addr is None:  # So something like LD A,(BC) or LD A,B
                 code_output(
-                    loc + code_org,
+                    program_counter,
                     z80.disasm(b),
                     list_address,
                     explain.code(z80.disasm(b)),
                     add_extra_info(decode_buffer),
                 )
+                program_counter += b.len
             else:
+                debug("C - 4")
                 # print("Not none?")
                 tmp = z80.disasm(b)
                 tmp_data_addr = handle_data(b)
@@ -633,18 +680,25 @@ while loc <= max(code):
                             " - References: " + str_locations[handle_data(b)]
                         )
                 code_output(
-                    loc + code_org,
+                    program_counter,
                     labelled,
                     list_address,
                     explain.code(labelled) + " " + str_for_comment,
                     add_extra_info(decode_buffer),
                 )
+                program_counter += b.len
         else:
+            debug("Fell through to the end")
             code_output(
-                loc,
+                program_counter,
                 z80.disasm(b),
                 list_address,
                 explain.code(z80.disasm(b)),
                 add_extra_info(decode_buffer),
             )
-    loc += b.len
+            program_counter += b.len
+            debug("PC Bump 2 - ",b.len)
+    else:
+        # print(b.len)
+        program_counter += b.len
+        debug("PC Bump 5 - ",b.len)
