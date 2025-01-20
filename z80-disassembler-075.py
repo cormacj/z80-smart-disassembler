@@ -1,4 +1,3 @@
-#
 #!/usr/bin/env python3
 # what do I need?
 # array for code store
@@ -25,7 +24,7 @@ identified_areas = {}
 labels = defaultdict(set)
 template_labels = defaultdict(set)
 code=defaultdict(UserDict)
-# code(address) = [bin_code][code type][label]
+# code(address) = [bin_code][code type][label pass 1][label pass 2]
 # code type is one of:
 # C = Code
 # B, W =  Byte or word
@@ -35,7 +34,7 @@ strings_with_locations = []
 str_locations = {}
 str_sizes = {}
 style = "asm"
-myversion = "0.50"
+myversion = "0.75"
 
 class Pointer(NamedTuple):
     ispointer: bool
@@ -43,9 +42,6 @@ class Pointer(NamedTuple):
     destination: int
 
 def get_from_code(addr,idx):
-    # print("!!!!!")
-    # print(addr)
-    # print(hex(max(code)),hex(addr))
     debug(f"{addr:04x}: {idx}")
     if is_in_code(addr):
         return code[addr][idx]
@@ -54,7 +50,7 @@ def get_from_code(addr,idx):
 
 def dump_code_array():
     for loop in range(min(code),max(code)):
-        print(f'{hex(loop)}: {code[loop][0]:02x} {code[loop][1]} {code[loop][2]}')
+        print(f'{hex(loop)}: {code[loop][0]:02x} {code[loop][1]} {code[loop][2]} {code[loop][3]}')
 
 def debug(message,arg1="",arg2="",arg3=""):
     if args.debug:
@@ -69,7 +65,6 @@ def check_for_pointer(addr):
     # Returns: Pointer.ispointer=True, pointer.source=0xc000, pointer.destination=0xd123
 
     ptr=Pointer
-    # debug("called:",addr)
     if addr[0]=="(":
         # Yup, we have a pointer
         p_addr=to_number(addr.replace("(","").replace(")",""))-code_org
@@ -243,9 +238,7 @@ def code_output(address, text, display_address, comment="", added_details=""):
 
 
 def add_extra_info(opcode, newline="X"):
-    # print(opcode)
     d = z80.decode(opcode, 0)
-    # print(d)
     data_dump = ""
     txt_dump = ""
     for loop in range(0, d.len):
@@ -254,44 +247,45 @@ def add_extra_info(opcode, newline="X"):
             txt_dump = txt_dump + chr(opcode[loop])
         else:
             txt_dump = txt_dump + "."
-    # print(f'---> {data_dump} "{txt_dump}"')
     if newline == "":
         return f'\n{" ":31};{" ":8} {data_dump} "{txt_dump}"'
     else:
         return f' {data_dump} "{txt_dump}"'
 
 def is_in_code(addr):
-    # debug(f'Min: {min(code):04x} Max: {max(code):04x}')
+    # Check to see if an address falls inside the code location
+    #
     if (addr>=min(code)) and (addr<=(max(code))):
         return True
     else:
         return False
 
 def mark_handled(start_address, size, data_type):
-    #Only mark within out code
-    update_label_name(start_address,data_type)
+    # Mark an identified address (or range of addresses) with a data type if it's inside the code
     if is_in_code(start_address):
+        update_label_name(start_address,data_type)
         for addr in range(start_address, start_address + size + 1):
-            # if identified_areas[addr]=="":
-            # identified_areas[addr] = data_type
-            # debug("ID:",addr,data_type)
             code[addr][1]=data_type
 
 
 def identified(address):
-    # print("Identified call:",hex(address))
-    # print("data is: ",code[address])
+    # Shorthand for code[address][1]
     return code[address][1]
 
 def update_label_name(addr, type):
+    # Create a label name if the address is inside the code
     if is_in_code(addr):
         code[addr][2]=f'{type}_{addr:04X}'
     # labels[addr].add(xref)
 
 def update_labels(addr, xref):
+    # Add to the xref table
     labels[addr].add(xref)
 
 def lookup_label(addr, prettyprint=""):
+    # Return a hex address if outside the code
+    # If its inside the code, the generate the label based on what args.labeltype is
+    # (Current 1 = C_89AB and 2 = code_89AB)
     debug("Lookup label at addr=",hex(addr))
     if not is_in_code(addr):
         return hex(addr)
@@ -308,23 +302,22 @@ def lookup_label(addr, prettyprint=""):
     if prettyprint != "":
         return (
             f'{result}_{addr:X}:{" ":9}'
-            if (addr in labels)
-            and (addr >= code_org and addr < (code_org + len(bin_data)))
+            if (code[addr][2]!="")
+            and (is_in_code(addr))
             else hex(addr)
         )
     else:
         return (
             f"{result}_{addr:X}"
-            if (addr in labels)
-            and (addr >= code_org and addr < (code_org + len(bin_data)))
+            if (code[addr][2]!="")
+            and (is_in_code(addr))
             else hex(addr)
         )
 
 
 def handle_data(b):  # , loc, code_org):
-    # print("Processing->",z80.disasm(b),b)
-    # print("Addr deref? ->",b.operands[0][0] is b.operands[0][0].ADDR_DEREF)
-    # print("Addr reg? ->",(b.operands[0][0] is b.operands[0][0].REG) or (b.operands[1][0] is b.operands[0][0].REG),b.operands[0][0],b.operands[1][0])
+    # Due to how the z80 disassembly library decodes instructions, this function returns the address used in a LD instruction
+
     if b.operands[0][0] is b.operands[0][0].ADDR_DEREF:  # if not a LD (HL)
         # print("-->",b.operands[0][1])
         return b.operands[0][1]
@@ -348,6 +341,20 @@ def handle_data(b):  # , loc, code_org):
 
 def handle_jump(b, current_address):
     # Figure out the actual address of a relative jump, or just return the address.
+    # The disassembler library decodes a relative jump wierdly:
+    #   >>> b=z80.disasm(b'\x18\xE7\x00', 0)
+    #   >>> print(b)
+    #   JR 0xffe9
+    #   >>> print(b)
+    #   OP.JR
+    #   .operands[0] = (<OPER_TYPE.ADDR: 3>, -23)
+    #   >>> b=z80.disasm(b'\x18\x07\x00', 0)
+    #   >>> print(b)
+    #   JR 0x0009
+    # So for relative addresses, do the math to get the actual address so we can make it a label
+    #
+    # If its not relative and not JP (HL), return the address
+
     if b.op.name in ("JR", "DJNZ"):  # relative
         if b.operands[0][0] is b.operands[0][0].ADDR:
             relative_correction = to_number(b.operands[0][1])
@@ -365,6 +372,7 @@ def handle_jump(b, current_address):
 
 
 def findstring(memstart, memend):
+    # Regex find strings
     # print("\n;Pass 2: Identify Strings ")
     # needs rework. Should probably check all the LD A,() areas
     pattern = re.compile(b"[ -~]{%d,}" % min_length)
@@ -412,21 +420,24 @@ print(";Loading code")
 with open(args.filename, "rb") as f:
     bin_data = f.read()
 
-# Copy to the proper location and prep for processing
+# Copy the binary file to the proper memory location and for processing
 loc=0
 while loc < len(bin_data):
     if loc>(len(bin_data)-5):
         debug(f'!! {hex(loc)}-->{hex(code_org+loc)} : {hex(bin_data[loc])}')
-    code[code_org+loc][0]=bin_data[loc] # Copy the code to the proper address
-    code[code_org+loc][1]=""
-    code[code_org+loc][2]=""
+
+    code[code_org+loc][0]=bin_data[loc] # Binary data
+    code[code_org+loc][1]="" # Code Type
+    code[code_org+loc][2]="" # Label identification pass 1
+    code[code_org+loc][3]="" # Label identification pass 2
     # print("copying ",bin_data[loc]," to ",hex(code_org+loc),". Result is ",code[code_org+loc][0])
     loc += 1
 
 #Add padding because max(code) causes breaking. Grrr. Grumble, Grumble.
-code[code_org+loc][0]=0 # Copy the code to the proper address
+code[code_org+loc][0]=0
 code[code_org+loc][1]=""
 code[code_org+loc][2]=""
+code[code_org+loc][3]=""
 
 # print(hex(loc))
 # print(len(bin_data))
@@ -547,19 +558,205 @@ else:
 if args.templatefile is not None:
     process_template(args.templatefile)
 
+
+# -- Pass 1 --
+# This is nearly the final assembly.
+# In this pass I'm building the final labels but not outputting code
+print("Pass 1")
 # dump_code_array()
 program_counter=min(code)
 
 while program_counter < max(code):
     debug("loc=",hex(program_counter),hex(max(code)))
-    #
-    # First, handle labels
-    #Build a decoding buffer
+    # Build a decoding buffer
     codesize = min(4, end_of_code - program_counter)
     for loop in range(0,codesize):
         decode_buffer[loop] = code[loop+program_counter][0]
     b = z80.decode(decode_buffer, 0)
 
+    # Next, handle labels
+    if (program_counter in labels) or (program_counter in template_labels):
+        if (program_counter in template_labels):
+            labelname=template_labels[program_counter]
+        else:
+            labelname=lookup_label(program_counter,1)
+        code[program_counter][3]=labelname
+
+        # if args.style == "asm":
+        #     print(";--------------------------------------")
+        #     print()
+        #     # print(f'{lookup_label(loc + code_org)}_{loc + code_org:X}:'+f'{" ":23} ; {" ":8}' , end='XREF=')
+        #     print(f'{labelname:30} ; {" ":8} {xrefstr}', end="")
+        #     if args.xref == "on":
+        #         for tmp in labels[program_counter]:
+        #             print(f"0x{tmp:X} ", end="")
+        #     print("")
+        # else:
+        #     # f'    {text:25}  ;{addr} {added_details:20} {comment}')
+        #     print(
+        #         ";----------------------------------------------------------------------------"
+        #     )
+        #     print()
+        #     print(
+        #         f'{"":24}     {labelname:30} ; {xrefstr}', end=""
+        #     )
+        #     if args.xref == "on":
+        #         for tmp in labels[program_counter]:
+        #             print(f"0x{tmp:X} ", end="")
+        #     print("")
+
+    #Next, process code and data
+    # codesize = min(4, max(code) - loc)
+    # b = z80.decode(code_snapshot, 0)
+    # print("--------------->",hex(loc))
+    if identified(program_counter) == "D" and (program_counter in str_locations):
+        #Its a string!
+        debug("D - 1")
+        # code_output(
+        #     program_counter, "DEFB " + str_locations[program_counter], list_address
+        # )
+        #FIXME is this tripping too many PC increments?
+        # debug("PC Bump 3")
+        # program_counter += str_sizes[program_counter]
+    elif identified(program_counter) == "D":
+        debug("D - 2")
+        if is_in_code(program_counter):
+            debug("D - 3")
+            tmp = get_from_code(program_counter,0) #code[loc][0]
+            out_tmp = (
+                f'"{chr(tmp)}"'
+                if 31 < tmp < 127
+                else (
+                    f"('{chr(tmp - 0x80)}') + 0x80" if 31 < (tmp - 0x80) < 127 else hex(tmp)
+                )
+            )
+            # code_output(program_counter, "DEFB " + hex(tmp), list_address, out_tmp)
+            # debug("PC Bump")
+            program_counter += 1 #FIXME - tripping PC too much?
+    elif identified(program_counter) == "C":
+        debug("C - 1")
+        # code_snapshot[:codesize] = bin_data[loc : loc + codesize]
+        b = z80.decode(decode_buffer, 0)
+        conds = z80.disasm(b).split(",")[0] + ","
+        if b.op in (b.op.JR, b.op.DJNZ):
+            debug("C - 1a")
+            debug("Processing relative jump")
+            jump_addr = handle_jump(b, program_counter)
+            this_opcode = b.op.name
+            if len(z80.disasm(b).split(",")) > 1:  # conditional jumps and calls
+                this_opcode = z80.disasm(b).split(",")[0] + ","
+            if jump_addr:
+                tmp = f"{this_opcode} " + lookup_label(jump_addr)
+                # code_output(
+                #     program_counter,
+                #     tmp,
+                #     list_address,
+                #     explain.code(tmp),
+                #     add_extra_info(decode_buffer),
+                # )
+                program_counter += b.len
+        elif (
+            b.op in (b.op.JP, b.op.CALL)
+            and b.operands[0][0] is not b.operands[0][0].REG_DEREF
+        ):
+            debug("C - 2")
+            jump_addr = handle_jump(b, program_counter)
+            debug("Processing jump")
+            if jump_addr:
+                this_opcode = b.op.name
+                if len(z80.disasm(b).split(",")) > 1:  # conditional jumps and calls
+                    this_opcode = z80.disasm(b).split(",")[0] + ","
+                tmp = f"{this_opcode} " + lookup_label(jump_addr)
+                # code_output(
+                #     program_counter,
+                #     tmp,
+                #     list_address,
+                #     explain.code(z80.disasm(b)),
+                #     add_extra_info(decode_buffer),
+                # )
+                program_counter += b.len
+        elif b.op is b.op.LD:  # and b.operands[0][0] is not b.operands[0][0].REG_DEREF:
+            debug("C - 3")
+            data_addr = handle_data(b)
+            # print(data_addr)
+            if data_addr is None:  # So something like LD A,(BC) or LD A,B
+                # code_output(
+                #     program_counter,
+                #     z80.disasm(b),
+                #     list_address,
+                #     explain.code(z80.disasm(b)),
+                #     add_extra_info(decode_buffer),
+                # )
+                program_counter += b.len
+            else:
+                debug("C - 4")
+                # print("Not none?")
+                tmp = z80.disasm(b)
+                tmp_data_addr = handle_data(b)
+                tmp_addr = hex(handle_data(b))
+                # mark_handled(tmp_data_addr, 2, "D")
+                if (tmp_data_addr >= code_org) and (
+                    tmp_data_addr <= code_org + len(bin_data)
+                ):
+                    # ld_label=f'{identified(handle_data(b))}_{handle_data(b):X}'
+                    ld_label = lookup_label(handle_data(b))
+                    labelled = tmp.replace(
+                        tmp_addr, ld_label
+                    )  # Convert inline hex to L_xxxx label
+                else:
+                    labelled = tmp
+                str_for_comment = ""
+                if data_addr in labels:
+                    if handle_data(b) in str_locations:
+                        str_for_comment = (
+                            " - References: " + str_locations[handle_data(b)]
+                        )
+                # code_output(
+                #     program_counter,
+                #     labelled,
+                #     list_address,
+                #     explain.code(labelled) + " " + str_for_comment,
+                #     add_extra_info(decode_buffer),
+                # )
+                program_counter += b.len
+        else:
+            debug("Fell through to the end")
+            # dump_code_array()
+            # print(hex(program_counter))
+            # print(z80.disasm(b))
+            # code_output(
+            #     program_counter,
+            #     z80.disasm(b),
+            #     list_address,
+            #     explain.code(z80.disasm(b)),
+            #     add_extra_info(decode_buffer),
+            # )
+            program_counter += b.len
+            debug("PC Bump 2 - ",b.len)
+    else:
+        # print(b.len)
+        program_counter += b.len
+        debug("PC Bump 5 - ",b.len)
+
+# -- Pass 2 --
+dump_code_array()
+
+#Move Pass 1 into the main labels for output
+for loop in range(min(code),max(code)):
+    code[loop][2]=code[loop][3]
+
+print("Pass 2")
+program_counter=min(code)
+
+while program_counter < max(code):
+    debug("loc=",hex(program_counter),hex(max(code)))
+    # Build a decoding buffer
+    codesize = min(4, end_of_code - program_counter)
+    for loop in range(0,codesize):
+        decode_buffer[loop] = code[loop+program_counter][0]
+    b = z80.decode(decode_buffer, 0)
+
+    # Next, handle labels
     if (program_counter in labels) or (program_counter in template_labels):
         if (program_counter in template_labels):
             labelname=template_labels[program_counter]
@@ -646,6 +843,11 @@ while program_counter < max(code):
             debug("C - 2")
             jump_addr = handle_jump(b, program_counter)
             debug("Processing jump")
+            #TODO: Fix jump labelling
+            #The some jumps are getting bad labels and breaking reassembly.
+            #In pass 1, we dry ran the output.
+            #At this point code[loc][2] should be valid.
+            #I need to validate that this next bit checks against code[loc][2] before making a label.
             if jump_addr:
                 this_opcode = b.op.name
                 if len(z80.disasm(b).split(",")) > 1:  # conditional jumps and calls
@@ -721,3 +923,4 @@ while program_counter < max(code):
         # print(b.len)
         program_counter += b.len
         debug("PC Bump 5 - ",b.len)
+# dump_code_array()
