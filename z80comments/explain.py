@@ -100,7 +100,7 @@ def build_comment(opcode,reg_1="",reg_2="",reg_3=""):
         code_comment=result.replace("$1",reg_1).replace("$2",reg_2)
     return code_comment
 
-def explain(opcode):
+def code(opcode):
     # print(opcode)
     params={}
     params[1]=""

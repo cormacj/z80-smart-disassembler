@@ -3,10 +3,10 @@
 # Usage
 
 ```
-from z80comments import dictionary
+from z80comments import explain
 
 op="call z,0x1234"
-print(dictionary.explain(op))
+print(explain.code(op))
 ```
 Returns:
 ```
