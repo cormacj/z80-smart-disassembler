@@ -7,7 +7,7 @@ This was inspired by Sourcer from V Communications (see https://corexor.wordpres
 I wanted something similar for Z80 code and this project aims to do this.
 
 # Usage
-
+```
 usage: z80-disassembler.py [-h] [-v] [-o OUTFILE] [-t TEMPLATEFILE] [--style {asm,lst}] [-l LOADADDRESS] [--xref {off,on}] [--labeltype {2,1}] filename
 ```
 A Smart Z80 reverse assembler
