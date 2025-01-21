@@ -8,11 +8,11 @@
 # array for strings wwith locations
 
 import csv
+import sys
 import re
 from collections import defaultdict
 from collections import UserDict
 from typing import NamedTuple
-
 
 from z80comments import explain
 from z80dis import z80
@@ -41,12 +41,47 @@ class Pointer(NamedTuple):
     source: int
     destination: int
 
+
+def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill='█', print_end="\r"):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+        print_end   - Optional  : end character (e.g. "\r", "\r\n") (Str)
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filled_length = int(length * iteration // total)
+    bar = fill * filled_length + '-' * (length - filled_length)
+    print(f'\r{prefix} |{bar}| {percent}% {suffix}', end=print_end)
+    # Print New Line on Complete
+    if iteration == total:
+        print()
+
+
+def do_write(asm_string=""):
+    if args.outfile is not None:
+        asm_string=asm_string+'\n'
+        asm_file.write(asm_string)
+    else:
+        print(asm_string)
+
 def get_from_code(addr,idx):
     debug(f"{addr:04x}: {idx}")
     if is_in_code(addr):
         return code[addr][idx]
     else:
         return ""
+
+def display_version_info():
+    print()
+    print(f'{sys.argv[0]} v{myversion} - A Smart Z80 reverse assembler')
+    print()
 
 def dump_code_array(label="",address=""):
     if address!="":
@@ -223,22 +258,28 @@ def parse_arguments():
 
 
 def validate_arguments(argslist):
+    global asm_file
+    # print(argslist)
     # Ensure that supplied arguments are valid
-    if args.debug:  # pragma: no cover
+    if argslist.debug:  # pragma: no cover
         print("--- debug output ---")
         print(f"  {argslist=}")
         # print(f' {argslist.filename=}')
         # print(f'  {args.goodbye=}, {args.name=}')
         print("")
+    if argslist.outfile is not None:
+        print("Writing code to ",argslist.outfile)
+        print()
+        asm_file=open(args.outfile, 'w')
 
 
 def code_output(address, text, display_address, comment="", added_details=""):
 
     addr = f"{hex(address)}: " if display_address else ""
     if args.style == "asm":
-        print(f"    {text:25}  ;{addr} {added_details:20} {comment}")
+        do_write(f"    {text:25}  ;{addr} {added_details:20} {comment}")
     else:
-        print(f"{addr} {added_details:20}    {text:25}  ; {comment}")
+        do_write(f"{addr} {added_details:20}    {text:25}  ; {comment}")
 
 
 def add_extra_info(opcode, newline="X"):
@@ -388,12 +429,12 @@ def findstring(memstart, memend):
     # needs rework. Should probably check all the LD A,() areas
     pattern = re.compile(b"[ -~]{%d,}" % min_length)
     # data_area = bytearray(memend - memstart)
-    data_area= bytearray()
 
     # for loop in range(memstart, memend):
     #     # print(loop,memstart-code_org,bin_data[loop])
     #     if loop < memend:
     #         data_area[loop] = bin_data[loop]
+    print_progress_bar(0, len(bin_data), prefix='Loading code:', suffix='Complete', length=50)
     for match in pattern.finditer(bin_data):
         start_position, end_position = match.start(), match.end()
         matched_string = (
@@ -403,17 +444,21 @@ def findstring(memstart, memend):
             .replace("\\", '", 0x5c, "')
         )
         found_string = f'"{matched_string}"'
+        print_progress_bar(start_position, len(bin_data), prefix='Loading code:', suffix='Complete', length=50)
         strings_with_locations.append((found_string, start_position, end_position))
 
     for s, start, end in strings_with_locations:
         if re.search(r"[A-Za-z]{3,}", s):
             str_locations[code_org + start] = s
-            print(s)
             str_sizes[code_org + start] = end - start
             mark_handled(code_org + start, end - start, "D")
-
+    print_progress_bar(len(bin_data), len(bin_data), prefix='Loading code:', suffix='Complete', length=50)
 #------============ Main Area ============------
 #
+display_version_info()
+
+
+
 # First, lets get our parameters sorted out:
 args = parse_arguments()
 
@@ -428,23 +473,23 @@ else:
     xrefstr = ""
 
 
-print(";Loading code")
 # Load binary file
 with open(args.filename, "rb") as f:
     bin_data = f.read()
 
+print_progress_bar(0, len(bin_data), prefix='Loading code:', suffix='Complete', length=50)
+
 # Copy the binary file to the proper memory location and for processing
 loc=0
 while loc < len(bin_data):
-    if loc>(len(bin_data)-5):
-        debug(f'!! {hex(loc)}-->{hex(code_org+loc)} : {hex(bin_data[loc])}')
-
+    print_progress_bar(loc, len(bin_data), prefix='Loading code:', suffix='Complete', length=50)
     code[code_org+loc][0]=bin_data[loc] # Binary data
     code[code_org+loc][1]="" # Code Type
     code[code_org+loc][2]="" # Label identification pass 1
     code[code_org+loc][3]="" # Label identification pass 2
     # print("copying ",bin_data[loc]," to ",hex(code_org+loc),". Result is ",code[code_org+loc][0])
     loc += 1
+print_progress_bar(loc, len(bin_data), prefix='Loading code:', suffix='Complete', length=50)
 
 #Add padding because max(code) causes breaking. Grrr. Grumble, Grumble.
 code[code_org+loc][0]=0
@@ -467,7 +512,7 @@ code[code_org+loc][3]=""
 #     code_org + loc: "" for loc in range(len(bin_data) + 1)
 # }  # Assume everything is code
 
-print(";Pass 1: Identify addressable areas ", end="")
+print("Pass 1: Identify addressable areas")
 decode_buffer = bytearray(6)
 data_locations = {}
 jump_locations = {}
@@ -475,8 +520,9 @@ jump_locations = {}
 
 loc = min(code)
 end_of_code=max(code)
-
+print_progress_bar(0, len(bin_data), prefix='Progress:', suffix='Complete', length=50)
 while loc <= end_of_code:
+    print_progress_bar(loc-code_org, len(bin_data), prefix='Progress:', suffix='Complete', length=50)
     # if loc>(end_of_code-5):
     #     print(hex(loc),"-->",hex(end_of_code))
     #Build a decoding buffer
@@ -520,7 +566,7 @@ while loc <= end_of_code:
     loc += b.len
 
 #//TODO: Reimpliment
-print(";Part ??.a: Search for strings")
+print("Pass 2: Search for strings")
 id_sort = sorted(identified_areas)
 start = 0
 end = len(bin_data)
@@ -545,44 +591,39 @@ findstring(start, end)
 #     findstring(start, end)
 
 
-print(";Part ??.b: Build structure")
+print("Pass 3: Build code structure")
 loc = min(code)
 last = "C"
+print_progress_bar(loc-code_org, len(bin_data), prefix='Progress:', suffix='Complete', length=50)
 while loc <= max(code):
+    print_progress_bar(loc-code_org, len(bin_data), prefix='Progress:', suffix='Complete', length=50)
     # debug("Before:",code[loc][1])
     code[loc][1] = code[loc][1] or last
     # debug("After:",code[loc][1])
     last = code[loc][1]
     loc += 1
 
-print(";Part ??: Code:\n\n")
+print("Pass 4: Validate labels")
 code_snapshot = bytearray(8)
 loc = 0
 
 #--------------------- Main Section -------------------------
 
+
 # dump_code_array()
-
-# print("disasm")
-print("")
-if args.style == "asm":
-    print(f"org {hex(code_org)}")
-else:
-    print(f"     org {hex(code_org)}")
-
 
 if args.templatefile is not None:
     process_template(args.templatefile)
 
 
-# -- Pass 1 --
 # This is nearly the final assembly.
 # In this pass I'm building the final labels but not outputting code
-print("Pass 1")
 # dump_code_array()
 program_counter=min(code)
+print_progress_bar(program_counter-code_org, len(bin_data), prefix='Progress:', suffix='Complete', length=50)
 
 while program_counter < max(code):
+    print_progress_bar(program_counter-code_org, len(bin_data), prefix='Progress:', suffix='Complete', length=50)
     debug("loc=",hex(program_counter),hex(max(code)))
     # Build a decoding buffer
     codesize = min(4, end_of_code - program_counter)
@@ -753,7 +794,7 @@ while program_counter < max(code):
         # print(b.len)
         program_counter += b.len
         debug("PC Bump 5 - ",b.len)
-
+print_progress_bar(program_counter-code_org, len(bin_data), prefix='Progress:', suffix='Complete', length=50)
 # -- Pass 2 --
 # dump_code_array()
 
@@ -761,12 +802,20 @@ while program_counter < max(code):
 for loop in range(min(code),max(code)):
     code[loop][2]=code[loop][3]
 
-dump_code_array("Pass 2",0xf40e)
+# dump_code_array("Pass 2",0xf40e)
 
-print("Pass 2")
+print("Pass 5: Produce final listing")
 program_counter=min(code)
+# print("disasm")
+print("")
+if args.style == "asm":
+    do_write(f"org {hex(code_org)}")
+else:
+    do_write(f"     org {hex(code_org)}")
 
+print_progress_bar(0, len(bin_data), prefix='Progress:', suffix='Complete', length=50)
 while program_counter < max(code):
+    print_progress_bar(program_counter-code_org, len(bin_data), prefix='Progress:', suffix='Complete', length=50)
     debug("loc=",hex(program_counter),hex(max(code)))
     # Build a decoding buffer
     codesize = min(4, end_of_code - program_counter)
@@ -782,27 +831,27 @@ while program_counter < max(code):
             labelname=lookup_label(program_counter,1)
 
         if args.style == "asm":
-            print(";--------------------------------------")
-            print()
+            do_write(";--------------------------------------")
+            do_write()
             # print(f'{lookup_label(loc + code_org)}_{loc + code_org:X}:'+f'{" ":23} ; {" ":8}' , end='XREF=')
-            print(f'{labelname:30} ; {" ":8} {xrefstr}', end="")
+            tmp_str=f'{labelname:30} ; {" ":8} {xrefstr}'
             if args.xref == "on":
                 for tmp in labels[program_counter]:
-                    print(f"0x{tmp:X} ", end="")
-            print("")
+                    tmp_str=tmp_str+f'0x{tmp:X} '
+            do_write(tmp_str)
         else:
             # f'    {text:25}  ;{addr} {added_details:20} {comment}')
-            print(
+            do_write(
                 ";----------------------------------------------------------------------------"
             )
-            print()
-            print(
+            do_write("")
+            do_write(
                 f'{"":24}     {labelname:30} ; {xrefstr}', end=""
             )
             if args.xref == "on":
                 for tmp in labels[program_counter]:
-                    print(f"0x{tmp:X} ", end="")
-            print("")
+                    do_write(f"0x{tmp:X} ", end="")
+            do_write("")
 
     #Next, process code and data
     # codesize = min(4, max(code) - loc)
@@ -941,4 +990,5 @@ while program_counter < max(code):
         # print(b.len)
         program_counter += b.len
         debug("PC2 Bump 5 - ",b.len)
+print_progress_bar(program_counter-code_org, len(bin_data), prefix='Progress:', suffix='Complete', length=50)
 # dump_code_array()
