@@ -24,6 +24,13 @@ identified_areas = {}
 labels = defaultdict(set)
 template_labels = defaultdict(set)
 code=defaultdict(UserDict)
+
+# Variables for stats
+stats_labels=0 # Number of labels generated
+stats_d_labels =0 # data labels
+stats_c_labels =0 # code labels
+stats_loc=0 # Lines of code generated
+
 # code(address) = [bin_code][code type][label pass 1][label pass 2]
 # code type is one of:
 # C = Code
@@ -65,6 +72,8 @@ def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, lengt
 
 
 def do_write(asm_string=""):
+    global stats_loc
+    stats_loc=stats_loc+1
     if args.outfile is not None:
         asm_string=asm_string+'\n'
         asm_file.write(asm_string)
@@ -816,7 +825,6 @@ else:
 print_progress_bar(0, len(bin_data), prefix='Progress:', suffix='Complete', length=50)
 while program_counter < max(code):
     print_progress_bar(program_counter-code_org, len(bin_data), prefix='Progress:', suffix='Complete', length=50)
-    debug("loc=",hex(program_counter),hex(max(code)))
     # Build a decoding buffer
     codesize = min(4, end_of_code - program_counter)
     for loop in range(0,codesize):
@@ -830,6 +838,11 @@ while program_counter < max(code):
         else:
             labelname=lookup_label(program_counter,1)
 
+        if code[program_counter][1]=="C":
+            stats_c_labels=stats_c_labels+1
+        else:
+            stats_d_labels=stats_d_labels+1
+
         if args.style == "asm":
             do_write(";--------------------------------------")
             do_write()
@@ -840,7 +853,6 @@ while program_counter < max(code):
                     tmp_str=tmp_str+f'0x{tmp:X} '
             do_write(tmp_str)
         else:
-            # f'    {text:25}  ;{addr} {added_details:20} {comment}')
             do_write(
                 ";----------------------------------------------------------------------------"
             )
@@ -854,17 +866,11 @@ while program_counter < max(code):
             do_write("")
 
     #Next, process code and data
-    # codesize = min(4, max(code) - loc)
-    # b = z80.decode(code_snapshot, 0)
-    # print("--------------->",hex(loc))
     if identified(program_counter) == "D" and (program_counter in str_locations):
         #Its a string!
-        debug("D2 - 1")
         code_output(
             program_counter, "DEFB " + str_locations[program_counter], list_address
         )
-        #FIXME is this tripping too many PC increments?
-        # debug("PC Bump 3")
         program_counter += str_sizes[program_counter]
     elif identified(program_counter) == "D":
         debug("D2 - 2")
@@ -883,7 +889,6 @@ while program_counter < max(code):
             program_counter += 1 #FIXME - tripping PC too much?
     elif identified(program_counter) == "C":
         debug("C2 - 1")
-        # code_snapshot[:codesize] = bin_data[loc : loc + codesize]
         b = z80.decode(decode_buffer, 0)
         conds = z80.disasm(b).split(",")[0] + ","
         if b.op in (b.op.JR, b.op.DJNZ):
@@ -910,11 +915,6 @@ while program_counter < max(code):
             debug("C - 2")
             jump_addr = handle_jump(b, program_counter)
             debug("Processing jump")
-            #TODO: Fix jump labelling
-            #The some jumps are getting bad labels and breaking reassembly.
-            #In pass 1, we dry ran the output.
-            #At this point code[loc][2] should be valid.
-            #I need to validate that this next bit checks against code[loc][2] before making a label.
             if jump_addr:
                 this_opcode = b.op.name
                 if len(z80.disasm(b).split(",")) > 1:  # conditional jumps and calls
@@ -942,8 +942,6 @@ while program_counter < max(code):
                 )
                 program_counter += b.len
             else:
-                debug("C2 - 4")
-                # print("Not none?")
                 tmp = z80.disasm(b)
                 tmp_data_addr = handle_data(b)
                 tmp_addr = hex(handle_data(b))
@@ -951,7 +949,6 @@ while program_counter < max(code):
                 if (tmp_data_addr >= code_org) and (
                     tmp_data_addr <= code_org + len(bin_data)
                 ):
-                    # ld_label=f'{identified(handle_data(b))}_{handle_data(b):X}'
                     ld_label = lookup_label(handle_data(b))
                     labelled = tmp.replace(
                         tmp_addr, ld_label
@@ -973,10 +970,6 @@ while program_counter < max(code):
                 )
                 program_counter += b.len
         else:
-            debug("Fell through to the end")
-            # dump_code_array()
-            # print(hex(program_counter))
-            # print(z80.disasm(b))
             code_output(
                 program_counter,
                 z80.disasm(b),
@@ -985,10 +978,11 @@ while program_counter < max(code):
                 add_extra_info(decode_buffer),
             )
             program_counter += b.len
-            debug("PC2 Bump 2 - ",b.len)
     else:
-        # print(b.len)
         program_counter += b.len
-        debug("PC2 Bump 5 - ",b.len)
+
 print_progress_bar(program_counter-code_org, len(bin_data), prefix='Progress:', suffix='Complete', length=50)
-# dump_code_array()
+
+print("Lines of code:",stats_loc)
+print("Code Labels:",stats_c_labels)
+print("Data Labels:",stats_d_labels)
