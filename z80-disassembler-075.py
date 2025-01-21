@@ -48,9 +48,13 @@ def get_from_code(addr,idx):
     else:
         return ""
 
-def dump_code_array():
-    for loop in range(min(code),max(code)):
-        print(f'{hex(loop)}: {code[loop][0]:02x} {code[loop][1]} {code[loop][2]} {code[loop][3]}')
+def dump_code_array(label="",address=""):
+    if address!="":
+        loop=to_number(address)
+        print(f'{label} {hex(loop)}: {code[loop][0]:02x} {code[loop][1]} {code[loop][2]} {code[loop][3]}')
+    else:
+        for loop in range(min(code),max(code)):
+            print(f'{label} {hex(loop)}: {code[loop][0]:02x} {code[loop][1]} {code[loop][2]} {code[loop][3]}')
 
 def debug(message,arg1="",arg2="",arg3=""):
     if args.debug:
@@ -274,6 +278,7 @@ def identified(address):
 
 def update_label_name(addr, type):
     # Create a label name if the address is inside the code
+    # print("update_label called",hex(addr))
     if is_in_code(addr):
         code[addr][2]=f'{type}_{addr:04X}'
     # labels[addr].add(xref)
@@ -287,13 +292,19 @@ def lookup_label(addr, prettyprint=""):
     # If its inside the code, the generate the label based on what args.labeltype is
     # (Current 1 = C_89AB and 2 = code_89AB)
     debug("Lookup label at addr=",hex(addr))
+
     if not is_in_code(addr):
         return hex(addr)
     addr = int(addr)
     result = identified(addr)
+    # if addr==0xf40e:
+    #     dump_code_array("lookup_label",hex(addr))
+    # print("Code is: ",code[addr][0],code[addr][1],code[addr][2])
+    # print("checking against ",code[addr][2])
     match args.labeltype:
         case "1":
             result = identified(addr)
+            debug("result=",result)
         case "2":
             if identified(addr) == "C":
                 result = "code"
@@ -376,13 +387,14 @@ def findstring(memstart, memend):
     # print("\n;Pass 2: Identify Strings ")
     # needs rework. Should probably check all the LD A,() areas
     pattern = re.compile(b"[ -~]{%d,}" % min_length)
-    data_area = bytearray(memend - code_org)
+    # data_area = bytearray(memend - memstart)
+    data_area= bytearray()
 
-    for loop in range(memstart, memend):
-        # print(loop,memstart-code_org,bin_data[loop])
-        if loop <= memend:
-            data_area[loop] = bin_data[loop]
-    for match in pattern.finditer(data_area):
+    # for loop in range(memstart, memend):
+    #     # print(loop,memstart-code_org,bin_data[loop])
+    #     if loop < memend:
+    #         data_area[loop] = bin_data[loop]
+    for match in pattern.finditer(bin_data):
         start_position, end_position = match.start(), match.end()
         matched_string = (
             match.group()
@@ -396,6 +408,7 @@ def findstring(memstart, memend):
     for s, start, end in strings_with_locations:
         if re.search(r"[A-Za-z]{3,}", s):
             str_locations[code_org + start] = s
+            print(s)
             str_sizes[code_org + start] = end - start
             mark_handled(code_org + start, end - start, "D")
 
@@ -507,11 +520,14 @@ while loc <= end_of_code:
     loc += b.len
 
 #//TODO: Reimpliment
-# print(";Part ??.a: Search for strings")
-# id_sort = sorted(identified_areas)
-# start = 0
-# end = 0
+print(";Part ??.a: Search for strings")
+id_sort = sorted(identified_areas)
+start = 0
+end = len(bin_data)
+findstring(start, end)
+
 # for data_area in id_sort:
+#     print(hex(data_area))
 #     if data_area > code_org and data_area < (code_org + len(bin_data)):
 #         # print(hex(data_area),identified_areas[data_area])
 #         if (identified_areas[data_area] == "D") and (start == 0):
@@ -527,7 +543,7 @@ while loc <= end_of_code:
 # if (end == 0) and (start != 0):
 #     end == len(bin_data) + code_org
 #     findstring(start, end)
-#
+
 
 print(";Part ??.b: Build structure")
 loc = min(code)
@@ -617,7 +633,7 @@ while program_counter < max(code):
         # )
         #FIXME is this tripping too many PC increments?
         # debug("PC Bump 3")
-        # program_counter += str_sizes[program_counter]
+        program_counter += str_sizes[program_counter]
     elif identified(program_counter) == "D":
         debug("D - 2")
         if is_in_code(program_counter):
@@ -739,11 +755,13 @@ while program_counter < max(code):
         debug("PC Bump 5 - ",b.len)
 
 # -- Pass 2 --
-dump_code_array()
+# dump_code_array()
 
 #Move Pass 1 into the main labels for output
 for loop in range(min(code),max(code)):
     code[loop][2]=code[loop][3]
+
+dump_code_array("Pass 2",0xf40e)
 
 print("Pass 2")
 program_counter=min(code)
@@ -792,15 +810,15 @@ while program_counter < max(code):
     # print("--------------->",hex(loc))
     if identified(program_counter) == "D" and (program_counter in str_locations):
         #Its a string!
-        debug("D - 1")
+        debug("D2 - 1")
         code_output(
             program_counter, "DEFB " + str_locations[program_counter], list_address
         )
         #FIXME is this tripping too many PC increments?
         # debug("PC Bump 3")
-        # program_counter += str_sizes[program_counter]
+        program_counter += str_sizes[program_counter]
     elif identified(program_counter) == "D":
-        debug("D - 2")
+        debug("D2 - 2")
         if is_in_code(program_counter):
             debug("D - 3")
             tmp = get_from_code(program_counter,0) #code[loc][0]
@@ -815,7 +833,7 @@ while program_counter < max(code):
             debug("PC Bump")
             program_counter += 1 #FIXME - tripping PC too much?
     elif identified(program_counter) == "C":
-        debug("C - 1")
+        debug("C2 - 1")
         # code_snapshot[:codesize] = bin_data[loc : loc + codesize]
         b = z80.decode(decode_buffer, 0)
         conds = z80.disasm(b).split(",")[0] + ","
@@ -862,7 +880,7 @@ while program_counter < max(code):
                 )
                 program_counter += b.len
         elif b.op is b.op.LD:  # and b.operands[0][0] is not b.operands[0][0].REG_DEREF:
-            debug("C - 3")
+            debug("C2 - 3")
             data_addr = handle_data(b)
             # print(data_addr)
             if data_addr is None:  # So something like LD A,(BC) or LD A,B
@@ -875,12 +893,12 @@ while program_counter < max(code):
                 )
                 program_counter += b.len
             else:
-                debug("C - 4")
+                debug("C2 - 4")
                 # print("Not none?")
                 tmp = z80.disasm(b)
                 tmp_data_addr = handle_data(b)
                 tmp_addr = hex(handle_data(b))
-                mark_handled(tmp_data_addr, 2, "D")
+                # mark_handled(tmp_data_addr, 2, "D")
                 if (tmp_data_addr >= code_org) and (
                     tmp_data_addr <= code_org + len(bin_data)
                 ):
@@ -918,9 +936,9 @@ while program_counter < max(code):
                 add_extra_info(decode_buffer),
             )
             program_counter += b.len
-            debug("PC Bump 2 - ",b.len)
+            debug("PC2 Bump 2 - ",b.len)
     else:
         # print(b.len)
         program_counter += b.len
-        debug("PC Bump 5 - ",b.len)
+        debug("PC2 Bump 5 - ",b.len)
 # dump_code_array()
