@@ -9,7 +9,7 @@ I wanted something similar for Z80 code and this project aims to do this.
 # Usage
 
 usage: z80-disassembler.py [-h] [-v] [-o OUTFILE] [-t TEMPLATEFILE] [--style {asm,lst}] [-l LOADADDRESS] [--xref {off,on}] [--labeltype {2,1}] filename
-
+```
 A Smart Z80 reverse assembler
 
 positional arguments:
@@ -25,7 +25,7 @@ options:
                         Specify where in RAM the code loads
   --xref {off,on}       Enable or disable cross references for labels
   --labeltype {2,1}     1: Uses short name eg D_A123 or C_A345 2: Uses full names, eg data_A123 or code_A123
-
+```
 # Example usage
 
 
