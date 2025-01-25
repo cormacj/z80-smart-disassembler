@@ -123,8 +123,10 @@ def code(opcode):
     if "," in opcode: #A 3 part mnemonic eg ADD A,C
         params[1]=opcode.split(" ")[1].split(",")[0]
         params[2]=opcode.split(" ")[1].split(",")[1]
-        if (len(opcode.split(","))>2): #Could happen with something like "set 7,(iy+1),a"
-            params[3]=opcode.split(" ")[1].split(",")[2]
+        # if (len(opcode.split(","))>2): #Could happen with something like "set 7,(iy+1),a"
+        #     # print(params)
+        #     # print(opcode)
+        #     params[3]=opcode.split(" ")[1].split(",")[2]
     elif opcode.count(" ")>0: #Whats left must be a two part mnemonic and not a single opcode eg PUSH HL
         params[1]=opcode.split(" ")[1]
     this_comment=build_comment(params[0],params[1],params[2],params[3])
