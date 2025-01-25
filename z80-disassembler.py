@@ -982,7 +982,9 @@ while program_counter < max(code):
             # result=result.replace('"', '",34,"').replace("\\", '", 0x5c, "')
             # print("---->",result,code[src_array_index][1],code[src_array_index][2],"\n")
             program_counter=program_counter+len(result)
-        code_output((program_counter)-len(''.join(result)),f'DEFB "{result}"',list_address)
+        str_len=len(result)+1
+        result=result+decode_terminator(code[src_array_index][0])
+        code_output(program_counter-str_len,f'DEFB "{result}"',list_address)
         print(f"====> result={result}",code[src_array_index][1],code[src_array_index][2],"\n")
         program_counter +=1
     #         # print(hex(string_counter))
