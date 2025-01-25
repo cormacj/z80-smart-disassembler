@@ -903,8 +903,8 @@ for loop in range(min(code),max(code)):
     code[loop][2]=code[loop][3]
 
 print("Pass 5: Produce final listing")
-for a_address in range(0xc240,0xc260):
-    dump_code_array("-->",a_address)
+# for a_address in range(0xc240,0xc260):
+#     dump_code_array("-->",a_address)
 program_counter=min(code)
 if args.style == "asm":
     do_write(f"org {hex(code_org)}")
@@ -919,7 +919,7 @@ while program_counter < max(code):
     for loop in range(0,codesize):
         decode_buffer[loop] = code[loop+program_counter][0]
     b = z80.decode(decode_buffer, 0)
-    dump_code_array("---->",program_counter)
+    # dump_code_array("---->",program_counter)
     # Next, handle labels
     # print_label(program_counter)
     # if (program_counter in labels) or (program_counter in template_labels):
@@ -960,17 +960,17 @@ while program_counter < max(code):
         # string_counter=program_counter
         # print_label(string_counter)
         tmp_string=''
-        # dump_code_array()
+        # dump_code_array("Check",program_counter)
         strings = []
         current_string = []
         tmp_array = bytearray()
         tmp_array_index=0
-        src_array_index=program_counter-1
+        src_array_index=program_counter
         result=""
-        print("1:",hex(src_array_index))
+        # print("1:",hex(src_array_index))
         while (identified(src_array_index) == "S") and not is_terminator(code[src_array_index][0]):
-            print("2:",hex(src_array_index))
-            print(tmp_array_index)
+            # print("2:",hex(src_array_index))
+            # print(tmp_array_index)
             # dump_code_array("Array:",src_array_index)
             tmp_array.append(code[src_array_index][0])
             src_array_index += 1
@@ -978,15 +978,35 @@ while program_counter < max(code):
 
             cnt=program_counter
             result=build_strings_from_binary_data(tmp_array)
-
+            # print("-->",result)
             # result=result.replace('"', '",34,"').replace("\\", '", 0x5c, "')
             # print("---->",result,code[src_array_index][1],code[src_array_index][2],"\n")
-            program_counter=program_counter+len(result)
+            # program_counter=program_counter+len(result)
         str_len=len(result)+1
-        result=result+decode_terminator(code[src_array_index][0])
-        code_output(program_counter-str_len,f'DEFB "{result}"',list_address)
-        print(f"====> result={result}",code[src_array_index][1],code[src_array_index][2],"\n")
-        program_counter +=1
+        result=result.replace('"', '",34,"').replace("\\", '", 0x5c, "')
+        # print("-->",result,(identified(program_counter) == "S"),is_terminator(code[program_counter][0]))
+        # dump_code_array("-- term -->",program_counter,)
+        if result!="":
+            # print("Result -->",result, end="")
+            # result=result+decode_terminator(code[program_counter][0])
+            # print("terminator-->",result)
+            program_counter=program_counter+len(result)
+            # dump_code_array("array",program_counter+len(result))
+            code_output(program_counter-str_len,f'DEFB "{result}{decode_terminator(code[program_counter][0])}',list_address)
+            program_counter +=1
+        elif (identified(program_counter) == "S") and (code[program_counter][0]>0x80):
+            # print("-->",decode_terminator(code[program_counter][0]))
+            # print(result)
+            result=result+decode_terminator(code[program_counter][0]).replace('",',"")
+            # print(result)
+            # print("terminator-->",result)
+            code_output(program_counter-str_len,f'DEFB {result}',list_address)
+            program_counter +=1
+        else:
+            code_output(program_counter-str_len,f'DEFB {hex(code[program_counter][0])}',list_address)
+            program_counter +=1
+        # print(f"====> result={result}",code[src_array_index][1],code[src_array_index][2],"\n")
+        # program_counter +=1
     #         # print(hex(string_counter))
     #         # print(identified(tmp_s))
     #         # dump_code_array("String",string_counter)
