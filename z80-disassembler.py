@@ -66,12 +66,16 @@ def dump_code_array(label="",address=""):
         label   - Optional: Print something informational
         address - Optional: Just print a single code[] entry for that address. If address is omitted, the whole array will be printed.
     """
+    if is_alphanumeric(code[address][0]):
+        ala=chr(code[address][0])
+    else:
+        ala=""
     if address!="":
         loop=to_number(address)
-        print(f'{label} {hex(loop)}: {code[loop][0]:02x} {code[loop][1]} {code[loop][2]} {code[loop][3]}')
+        print(f'{label} {hex(loop)}: {code[loop][0]:02x} {code[loop][1]} {code[loop][2]} {code[loop][3]} "{ala}"')
     else:
         for loop in range(min(code),max(code)):
-            print(f'{label} {hex(loop)}: {code[loop][0]:02x} {code[loop][1]} {code[loop][2]} {code[loop][3]}')
+            print(f'{label} {hex(loop)}: {code[loop][0]:02x} {code[loop][1]} {code[loop][2]} {code[loop][3]} "{ala}"')
 
 def is_alphanumeric(byte):
     return (31 <= byte <= 126)  #or (65 <= byte <= 90) or (97 <= byte <= 122)
@@ -81,9 +85,9 @@ def is_terminator(byte):
 
 def decode_terminator(byte):
     if byte>0x9f: #Asc 31+0x80
-        return f", '{chr(byte-0x80)}' + 0x80"
+        return f"\", '{chr(byte-0x80)}' + 0x80"
     else:
-        return f", {hex(byte)}"
+        return f"\", {hex(byte)}"
 
 def debug(message,arg1="",arg2="",arg3=""):
     """
@@ -110,7 +114,8 @@ def build_strings_from_binary_data(binary_data):
     if current_string:
         strings.append(''.join(current_string))
 
-    return strings
+    # return strings
+    return (''.join(strings))
 
 def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill='█', print_end="\r"):
     """
@@ -914,7 +919,7 @@ while program_counter < max(code):
     for loop in range(0,codesize):
         decode_buffer[loop] = code[loop+program_counter][0]
     b = z80.decode(decode_buffer, 0)
-
+    dump_code_array("---->",program_counter)
     # Next, handle labels
     # print_label(program_counter)
     # if (program_counter in labels) or (program_counter in template_labels):
@@ -948,7 +953,7 @@ while program_counter < max(code):
     #             for tmp in labels[program_counter]:
     #                 tmp_str=tmp_str+f"0x{tmp:X} "
     #         do_write(tmp_str)
-
+    # dump_code_array("Pre-decode:",program_counter)
     #Next, process code and data
     if identified(program_counter) == "S":
         #String area
@@ -960,21 +965,25 @@ while program_counter < max(code):
         current_string = []
         tmp_array = bytearray()
         tmp_array_index=0
-        src_array_index=program_counter
+        src_array_index=program_counter-1
         result=""
-
-        while (identified(src_array_index) == "S") and code[src_array_index][2]=="":
+        print("1:",hex(src_array_index))
+        while (identified(src_array_index) == "S") and not is_terminator(code[src_array_index][0]):
+            print("2:",hex(src_array_index))
             print(tmp_array_index)
-            dump_code_array("Array:",src_array_index)
+            # dump_code_array("Array:",src_array_index)
             tmp_array.append(code[src_array_index][0])
             src_array_index += 1
-            tmp_array_index +1
+            tmp_array_index +=1
 
             cnt=program_counter
             result=build_strings_from_binary_data(tmp_array)
-            print("---->",result,code[src_array_index][1],code[src_array_index][2],"\n")
+
+            # result=result.replace('"', '",34,"').replace("\\", '", 0x5c, "')
+            # print("---->",result,code[src_array_index][1],code[src_array_index][2],"\n")
             program_counter=program_counter+len(result)
-        print("====>",result,code[src_array_index][1],code[src_array_index][2],"\n")
+        code_output((program_counter)-len(''.join(result)),f'DEFB "{result}"',list_address)
+        print(f"====> result={result}",code[src_array_index][1],code[src_array_index][2],"\n")
         program_counter +=1
     #         # print(hex(string_counter))
     #         # print(identified(tmp_s))
