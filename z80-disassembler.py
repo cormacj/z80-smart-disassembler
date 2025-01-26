@@ -96,6 +96,11 @@ def debug(message,arg1="",arg2="",arg3=""):
     if args.debug:
         print("*debug* ",message,arg1,arg2,arg3)
 #--------------------------------
+def inc_program_counter(pc,inc):
+    if pc+inc<=0xffff:
+        return pc+inc
+    else:
+        return
 
 def build_strings_from_binary_data(binary_data):
     strings = []
@@ -968,7 +973,7 @@ while program_counter < max(code):
         src_array_index=program_counter
         result=""
         # print("1:",hex(src_array_index))
-        while (identified(src_array_index) == "S") and not is_terminator(code[src_array_index][0]):
+        while (identified(src_array_index) == "S") and not is_terminator(code[src_array_index][0]) and code[src_array_index][2]=="":
             # print("2:",hex(src_array_index))
             # print(tmp_array_index)
             # dump_code_array("Array:",src_array_index)
@@ -982,18 +987,21 @@ while program_counter < max(code):
             # result=result.replace('"', '",34,"').replace("\\", '", 0x5c, "')
             # print("---->",result,code[src_array_index][1],code[src_array_index][2],"\n")
             # program_counter=program_counter+len(result)
-        str_len=len(result)+1
+        str_len=len(result)
         result=result.replace('"', '",34,"').replace("\\", '", 0x5c, "')
         # print("-->",result,(identified(program_counter) == "S"),is_terminator(code[program_counter][0]))
         # dump_code_array("-- term -->",program_counter,)
         if result!="":
             # print("Result -->",result, end="")
             # result=result+decode_terminator(code[program_counter][0])
-            # print("terminator-->",result)
-            program_counter=program_counter+len(result)
+            print("terminator-->",result)
+            print(hex(program_counter))
+            print("Len-->",str_len,len(result))
+            program_counter=program_counter+str_len
+            print(hex(program_counter))
             # dump_code_array("array",program_counter+len(result))
             code_output(program_counter-str_len,f'DEFB "{result}{decode_terminator(code[program_counter][0])}',list_address)
-            program_counter +=1
+            # program_counter +=1
         elif (identified(program_counter) == "S") and (code[program_counter][0]>0x80):
             # print("-->",decode_terminator(code[program_counter][0]))
             # print(result)
