@@ -15,16 +15,20 @@ A Smart Z80 reverse assembler
 positional arguments:
   filename
 
-options:
-  -h, --help            show this help message and exit
-  -v                    verbose mode
-  -o OUTFILE            output file
-  -t TEMPLATEFILE       template file
-  --style {asm,lst}     asm produces a file that can be assembled. lst is a dump style output
-  -l LOADADDRESS, --load LOADADDRESS
-                        Specify where in RAM the code loads
-  --xref {off,on}       Enable or disable cross references for labels
-  --labeltype {2,1}     1: Uses short name eg D_A123 or C_A345 2: Uses full names, eg data_A123 or code_A123
+  options:
+    -h, --help            show this help message and exit
+    -v                    verbose mode
+    -q                    quiet mode
+    -o OUTFILE            output file
+    -t TEMPLATEFILE       template file
+    -s STRINGTERMINATOR   string terminator value - defaults are [0, 13, 141] and printable characters+0x80
+    --style {lst,asm}     asm produces a file that can be assembled. lst is a dump style output
+    -l LOADADDRESS, --load LOADADDRESS
+                          Specify where in RAM the code loads
+    --xref {off,on}       Enable or disable cross references for labels
+    --labeltype {2,1}     1: Uses short name eg D_A123 or C_A345 2: Uses full names, eg data_A123 or code_A123
+    -c {0,2,1}, --commentlevel {0,2,1}
+                          0: No code explanations 1: Data references only 2: Everything
 ```
 
 # Example usage
@@ -60,6 +64,7 @@ Data Labels: 54
 # Known Issues
 
 * Generated code causes z80asm to crash.
+* String detection fails oddly towards the end of a ROM and maybe elsewhere.
 
 # Dependencies
 
