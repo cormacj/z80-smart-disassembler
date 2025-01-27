@@ -728,7 +728,7 @@ def findstring(memstart, memend):
         if re.search(r"[A-Za-z]{3,}", s):
             str_locations[code_org + start] = s
             str_sizes[code_org + start] = end - start
-            mark_handled(code_org + start, end - start, "S")
+            mark_handled(code_org + start, end - start-1, "S")
     print_progress_bar(len(bin_data), len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
 #------============ Main Area ============------
 #
@@ -989,10 +989,10 @@ while program_counter < max(code):
         decode_buffer[loop] = code[loop+program_counter][0]
     b = z80.decode(decode_buffer, 0)
     # if 0xc246 <program_counter <0xc25d:
-    #     dump_code_array("---->",program_counter)
 
 
-# Next, handle labels
+
+    # Next, handle labels
     if (program_counter in labels) or (program_counter in template_labels):
         if (program_counter in template_labels):
             labelname=template_labels[program_counter]
@@ -1025,42 +1025,6 @@ while program_counter < max(code):
                     tmp_str=tmp_str+f"0x{tmp:X} "
             do_write(tmp_str)
 
-
-    # dump_code_array("---->",program_counter)
-    # Next, handle labels
-    # print_label(program_counter)
-    # if (program_counter in labels) or (program_counter in template_labels):
-    #     if (program_counter in template_labels):
-    #         labelname=template_labels[program_counter]+":"
-    #     else:
-    #         labelname=lookup_label(program_counter,1)+":"
-    #
-    #     if code[program_counter][1]=="C":
-    #         stats_c_labels=stats_c_labels+1
-    #     else:
-    #         stats_d_labels=stats_d_labels+1
-    #
-    #     if args.style == "asm":
-    #         do_write(";--------------------------------------")
-    #         do_write()
-    #         # print(f'{lookup_label(loc + code_org)}_{loc + code_org:X}:'+f'{" ":23} ; {" ":8}' , end='XREF=')
-    #         tmp_str=f'{labelname:30} ; {" ":8} {xrefstr}'
-    #         # print(labels)
-    #         if args.xref == "on":
-    #             for tmp in labels[program_counter]:
-    #                 tmp_str=tmp_str+f'0x{tmp:X} '
-    #         do_write(tmp_str)
-    #     else:
-    #         do_write(
-    #             ";----------------------------------------------------------------------------"
-    #         )
-    #         do_write("")
-    #         tmp_str=f'{"":24}     {labelname:30} ; {xrefstr}'
-    #         if args.xref == "on":
-    #             for tmp in labels[program_counter]:
-    #                 tmp_str=tmp_str+f"0x{tmp:X} "
-    #         do_write(tmp_str)
-    # dump_code_array("Pre-decode:",program_counter)
     #Next, process code and data
     if identified(program_counter) == "S":
         #String area
@@ -1093,122 +1057,18 @@ while program_counter < max(code):
         result=result.replace('"', '",34,"').replace("\\", '", 0x5c, "')
         # print("-->",result,(identified(program_counter) == "S"),is_terminator(code[program_counter][0]))
         # dump_code_array("-- term -->",program_counter,)
+        # print("-->",result)
         if result!="":
-            # print("Result -->",result, end="")
-            # result=result+decode_terminator(code[program_counter][0])
-            # print("terminator-->",result)
-            # print(hex(program_counter))
-            # print("Len-->",str_len,len(result))
             program_counter=program_counter+str_len
-            # print(hex(program_counter))
-            # dump_code_array("array",program_counter+len(result))
             code_output(program_counter-str_len,f'DEFB "{result}{decode_terminator(code[program_counter][0])}',list_address)
             program_counter +=1
         elif (identified(program_counter) == "S") and (code[program_counter][0]>0x80) and not is_terminator(code[program_counter][0]):
-            # print("-->",decode_terminator(code[program_counter][0]))
-            # print(result)
             result=result+decode_terminator(code[program_counter][0]).replace('",',"")
-            # print(result)
-            # print("terminator-->",result)
             code_output(program_counter-str_len,f'DEFB {result}',list_address)
             program_counter +=1
         else:
             code_output(program_counter-str_len,f'DEFB {hex(code[program_counter][0])}',list_address)
             program_counter +=1
-        # print(f"====> result={result}",code[src_array_index][1],code[src_array_index][2],"\n")
-        # program_counter +=1
-    #         # print(hex(string_counter))
-    #         # print(identified(tmp_s))
-    #         # dump_code_array("String",string_counter)
-    #         byte = get_from_code(program_counter,0) #code[loc][0]
-    #         debug(f"xxxxx {hex(program_counter)} {byte} {chr(byte)} {is_terminator(byte)}")
-    #         if is_alphanumeric(byte):
-    #             current_string.append(chr(byte))
-    #             if program_counter>0xc246 and program_counter<0xc25d:
-    #                 print(f"---> update 1 ({hex(program_counter)})")
-    #             # program_counter += 1
-    #         elif is_terminator(byte):
-    #             if current_string:
-    #                 # current_string.append(decode_terminator(byte))
-    #                 strings.append(''.join(current_string))
-    #                 tmp=f"{''.join(current_string)}"
-    #                 tmp=tmp.replace('"', '",34,"').replace("\\", '", 0x5c, "')
-    #                 # print(tmp)
-    #                 # print(strings)
-    #                 # print(hex(string_counter),''.join(current_string))
-    #                 # print("-->",hex(program_counter),hex(string_counter))
-    #                 code_output((program_counter)-len(''.join(current_string)),f'DEFB "{tmp}"{decode_terminator(byte)}',list_address)
-    #                 strings.clear()
-    #                 current_string.clear()
-    #                 program_counter = program_counter-1
-    #                 if program_counter>0xc246 and program_counter<0xc25d:
-    #                     print(f"---> update 2 ({hex(program_counter)})")
-    #
-    #             # else:
-    #             #     if program_counter>0xc246 and program_counter<0xc25d:
-    #             #         print(f"---> update 2 ({hex(program_counter)})")
-    #             #     program_counter += 1
-    #         else:
-    #             if program_counter>0xc246 and program_counter<0xc25d:
-    #                 print(f"---> update 3 ({hex(program_counter)})")
-    #             # program_counter += 1
-    #
-    #                 # program_counter=string_counter
-    #         program_counter += 1
-    #         if program_counter>0xc246 and program_counter<0xc25d:
-    #             print(f"---> update 4 ({hex(program_counter)})")
-    #         # # Append the last string if it exists
-    #         # if current_string:
-    #         #     strings.append(''.join(current_string))
-    #         #     # print("L",hex(string_counter),''.join(current_string))
-    #         #     # strings.clear()
-    #         #     # current_string.clear()
-    #         #     # program_counter=string_counter
-    #         # elif is_terminator(byte):
-    #         #     if current_string:
-    #         #         # current_string.append(decode_terminator(byte))
-    #         #         strings.append(''.join(current_string))
-    #         #         # print(strings)
-    #         #         # print(hex(string_counter),''.join(current_string))
-    #         #         code_output(program_counter,f'DEFB "{''.join(current_string)}"{decode_terminator(byte)}',list_address)
-    #         #         strings.clear()
-    #         #         current_string.clear()
-    #         #         # program_counter=string_counter
-    #         # program_counter +=1
-    #
-    #
-    #         # out_tmp = (
-    #         #     f'{chr(character)}'
-    #         #     if 31 < character < 127
-    #         #     else (
-    #         #         f"('{chr(character - 0x80)}') + 0x80" if 31 < (character - 0x80) < 127 else hex(character)
-    #         #     )
-    #         # )
-    #         # if 31 < (character - 0x80) < 127:
-    #         #     if tmp_string=="":
-    #         #         code_output(program_counter,'DEFB '+out_tmp,list_address)
-    #         #         program_counter=string_counter
-    #         #     else:
-    #         #         tmp_string=tmp_string+'", '+out_tmp
-    #         #         code_output(program_counter,'DEFB "'+tmp_string,list_address)
-    #         #         program_counter=string_counter
-    #         #         tmp_string=''
-    #         # else:
-    #         #     if (31 < (character - 0x80) < 127) or character==0 or character==13: # Terminators
-    #         #         code_output(string_counter,'DEFB "'+tmp_string+'",'+hex(character),list_address)
-    #         #         program_counter=string_counter
-    #         #         tmp_string=""
-    #         #     elif character>0x80:
-    #         #         code_output(string_counter,'DEFB "'+tmp_string+'",'+hex(character),list_address)
-    #         #         program_counter=string_counter
-    #         #     else:
-    #         #         tmp_string=tmp_string+out_tmp
-    #         #         # print("-->",tmp_string)
-    #         # print_label(string_counter)
-    #     # print("M",hex(string_counter),''.join(current_string))
-    #     # print("---------->",tmp_string)
-    #     # program_counter=string_counter
-    # # print("==>",hex(program_counter))
     elif identified(program_counter) == "D" and (program_counter in str_locations):
         #Its a string!
         code_output(
@@ -1216,6 +1076,8 @@ while program_counter < max(code):
         )
         program_counter += str_sizes[program_counter]
     elif identified(program_counter) == "D":
+        # dump_code_array("---->",program_counter)
+
         # debug("D2 - 2")
         if is_in_code(program_counter):
             # debug("D - 3")
