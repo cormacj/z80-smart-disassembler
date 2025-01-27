@@ -100,8 +100,11 @@ def build_comment(opcode,reg_1="",reg_2="",reg_3=""):
         code_comment=result.replace("$1",reg_1).replace("$2",reg_2)
     return code_comment
 
-def code(opcode):
+def code(opcode,commentlevel):
     # print(opcode)
+    if commentlevel==0:
+        return ""
+
     params={}
     params[1]=""
     params[2]=""
@@ -115,6 +118,9 @@ def code(opcode):
     # n=2
 
     n=len(opcode.split(","))
+    # print(params[0])
+    if commentlevel==1 and (params[0] not in ("LD")):
+        return "" #Carve out everything except LD
     alt_opcode=f'{params[0]}({n})'
     if alt_opcode in opcode_comments:
         params[0]=alt_opcode
