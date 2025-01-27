@@ -31,7 +31,9 @@ min_length = 3
 identified_areas = {}
 labels = defaultdict(set)
 template_labels = defaultdict(set)
+terminator_list=[0,13,0x8d]
 code=defaultdict(UserDict)
+commentlevel=0
 """
 code array structure is:
 code[address][0] = [bin_code]
@@ -68,11 +70,36 @@ def dump_code_array(label="",address=""):
     """
     if address!="":
         loop=to_number(address)
-        print(f'{label} {hex(loop)}: {code[loop][0]:02x} {code[loop][1]} {code[loop][2]} {code[loop][3]}')
+        if is_alphanumeric(code[loop][0]):
+            ala=chr(code[loop][0])
+        else:
+            ala=""
+        print(f'{label} {hex(loop)}: {code[loop][0]:02x} {code[loop][1]} {code[loop][2]} {code[loop][3]} "{ala}"')
     else:
         for loop in range(min(code),max(code)):
-            print(f'{label} {hex(loop)}: {code[loop][0]:02x} {code[loop][1]} {code[loop][2]} {code[loop][3]}')
+            if is_alphanumeric(code[loop][0]):
+                ala=chr(code[loop][0])
+            else:
+                ala=""
 
+            print(f'{label} {hex(loop)}: {code[loop][0]:02x} {code[loop][1]} {code[loop][2]} {code[loop][3]} "{ala}"')
+
+def is_alphanumeric(byte):
+    return (31 <= byte <= 126)  #or (65 <= byte <= 90) or (97 <= byte <= 122)
+
+def is_terminator(byte):
+    if byte in terminator_list:
+        return True
+    elif (31 + 128 <= byte <= 126 + 128):
+        return True
+    else:
+        return False
+
+def decode_terminator(byte):
+    if byte>0x9f: #Asc 31+0x80
+        return f"\", '{chr(byte-0x80)}' + 0x80"
+    else:
+        return f"\", {hex(byte)}"
 
 def debug(message,arg1="",arg2="",arg3=""):
     """
@@ -81,6 +108,31 @@ def debug(message,arg1="",arg2="",arg3=""):
     if args.debug:
         print("*debug* ",message,arg1,arg2,arg3)
 #--------------------------------
+def inc_program_counter(pc,inc):
+    if pc+inc<=0xffff:
+        return pc+inc
+    else:
+        return
+
+def build_strings_from_binary_data(binary_data):
+    strings = []
+    current_string = []
+
+    for byte in binary_data:
+        if is_alphanumeric(byte):
+            current_string.append(chr(byte))
+        elif is_terminator(byte):
+            if current_string:
+                current_string.append(decode_terminator(byte))
+                strings.append(''.join(current_string))
+                current_string = []
+
+    # Append the last string if it exists
+    if current_string:
+        strings.append(''.join(current_string))
+
+    # return strings
+    return (''.join(strings))
 
 def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill='█', print_end="\r"):
     """
@@ -96,7 +148,7 @@ def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, lengt
         fill        - Optional  : bar fill character (Str)
         print_end   - Optional  : end character (e.g. "\r", "\r\n") (Str)
     """
-    if args.outfile is not None:
+    if (args.outfile is not None) and (not args.debug) and (not args.quiet):
         percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
         filled_length = int(length * iteration // total)
         bar = fill * filled_length + '-' * (length - filled_length)
@@ -198,49 +250,54 @@ def process_template(filename):
     with open(filename, mode ='r') as file:
         csvFile = csv.reader(file)
         for lines in csvFile:
-            print("-------------------------------------")
-            print(f'->{lines}<-')
+            # print("-------------------------------------")
+            # print(f'->{lines}<-')
             if (lines!=[]):
                 if (lines[0][0]!=";"): #If not a comment or blank
-                    print(lines)
+                    # print(lines)
                     start_template=check_for_pointer(lines[0])
                     if start_template.ispointer:
                         begin=start_template.destination
-                        print("is pointer",hex(begin))
+                        # print("is pointer",hex(begin))
                     else:
                         begin=start_template.source
-                        print("NOT pointer",hex(begin))
+                        # print("NOT pointer",hex(begin))
 
-                    print("***start***",hex(start_template.source),hex(start_template.destination))
+                    # print("***start***",hex(start_template.source),hex(start_template.destination))
                     end_template=check_for_pointer(lines[1])
-                    print("***end***",hex(end_template.source),hex(end_template.destination))
+                    # print("***end***",hex(end_template.source),hex(end_template.destination))
                     # Next check for pointers and assign addresses as needed.
                     if end_template.ispointer:
                         end=end_template.destination
                     else:
                         end=end_template.source
-                    print("begin,end:",hex(begin),hex(end))
+                    # print("begin,end:",hex(begin),hex(end))
                     datatype=lines[2]
                     label=lines[3]
-                    print(f'Tagging {label}: {hex(begin)}')
-                    template_labels[begin]=label+":"
+                    debug(f'Tagging {label}: {hex(begin)}')
+                    code[begin][2]=label
+                    code[begin][3]=label
+                    template_labels[begin]=label
                     addr=begin
                     match datatype.lower():
-                        case 'b':
-                            for loop in range(begin-0xc000,end-0xc000):
-                                print(loop)
-                            mark_handled(addr,1,"D")
+                        # case 'b':
+                        #     for loop in range(begin,end):
+                        #         print(loop)
+                        #     mark_handled(addr,1,"D")
                         case "w":
                             mark_handled(addr,2,"D")
                         case "c":
                             print("Code:",hex(begin),hex(end))
-                            for loop in range(start,end):
-                                mark_handled(loop-code_org,1,"C")
+                            for loop in range(begin,end):
+                                mark_handled(loop,1,"C")
                             mark_handled(addr,3,"C")
                         case "p":
                             mark_handled(addr,2,"D")
                             code_loc=begin #Get the address where the pointer is pointing to
                             mark_handled(code_loc,2,"D")
+                        case "s":
+                            for loop in range(begin,end-1):
+                                mark_handled(loop,1,"S")
                         case _:
                             print("Unknown data type: ",datatype.lower())
                             exit
@@ -277,8 +334,10 @@ def parse_arguments():
     #                     help ='text pattern to search for')
 
     parser.add_argument("-v", dest="verbose", action="store_true", help="verbose mode")
+    parser.add_argument("-q", dest="quiet", action="store_true", help="quiet mode")
     parser.add_argument("-o", dest="outfile", action="store", help="output file")
     parser.add_argument("-t", dest="templatefile", action="store", help="template file")
+    parser.add_argument("-s", dest="stringterminator", action="store", help=f"string terminator value - defaults are {terminator_list} and printable characters+0x80 ")
 
     parser.add_argument(
         "--style",
@@ -312,6 +371,14 @@ def parse_arguments():
         default="1",
         help="1: Uses short name eg D_A123 or C_A345  2: Uses full names, eg data_A123 or code_A123",
     )
+    parser.add_argument(
+        "-c","--commentlevel",
+        dest="commentlevel",
+        action="store",
+        choices={"0","1", "2"},
+        default="0",
+        help="0: No code explanations 1: Data references only  2: Everything",
+    )
     parser.add_argument("-d", "--debug", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     return args  # paramaterize everything
@@ -335,6 +402,10 @@ def validate_arguments(argslist):
         print("Writing code to ",argslist.outfile)
         print()
         asm_file=open(args.outfile, 'w')
+    if args.stringterminator is not None:
+        terminator_list.append(to_number(args.stringterminator))
+        # print(terminator_list)
+    commentlevel=to_number(args.commentlevel)
 
 
 def code_output(address, code, display_address, comment="", added_details=""):
@@ -348,7 +419,7 @@ def code_output(address, code, display_address, comment="", added_details=""):
         comments        - Optional: Used for additional information. Currently used for opcode explanations.
         added_details   - Optional: Currently used for text+hex dump
     """
-
+    # print_label(address)
     addr = f"{hex(address)}: " if display_address else ""
     if args.style == "asm":
         do_write(f"    {code:25}  ;{addr} {added_details:20} {comment}")
@@ -409,6 +480,15 @@ def identified(address):
     Shorthand for code[address][1]
     """
     return code[address][1]
+def type_lookup(datatype):
+    match datatype:
+        case "S":
+            return "string"
+        case "D":
+            return "data"
+        case "C":
+            return "code"
+
 
 def update_label_name(addr, type):
     """
@@ -419,14 +499,39 @@ def update_label_name(addr, type):
     Returns:
         A string in the format D_1234 or data_1234 is returns
     """
-    if is_in_code(addr):
-        code[addr][2]=f'{type}_{addr:04X}'
 
-def update_labels(addr, xref):
+    # if is_in_code(addr):
+    #     code[addr][2]=f'{type}_{addr:04X}'
+    # addr=int(addr)
+    # dump_code_array("update",addr)
+    result="error"
+    if is_in_code(addr):
+        match args.labeltype:
+            case "1":
+                # case typr
+                # debug("--> case 1")
+                result = type
+                # debug("result=",result)
+                # print("-XX->1",result)
+            case "2":
+                result=type_lookup(type)
+                # debug(f"--> case 2 {identified(addr)}")
+                # if identified(addr) == "C":
+                #     result = "code"
+                # elif identified(addr) == "S":
+                #     result = "string"
+                # else:
+                #     result = "data"
+                # print("-xx->2",result)
+
+        code[addr][2]=f'{result}_{addr:04X}'
+        # print("--XX-> Writing ",code[addr][2])
+
+def update_xref(addr, xref):
     """
     Add to the xref table. Best to explain this is with an example:
         0xA123: JP 0xB456
-    In this example, this function adds 0xA123 to the coress reference address array at 0xB456, and would be used as update_labels(0xB445,0xA123)
+    In this example, this function adds 0xA123 to the coress reference address array at 0xB456, and would be used as update_xref(0xB445,0xA123)
     @params:
         addr    - Required: address that will be
         xref    - Required: tracked address from cross reference
@@ -447,28 +552,39 @@ def lookup_label(addr, prettyprint=""):
         Formatted String
     """
     if not is_in_code(addr):
+        debug("-->Not in code")
         return hex(addr)
-    addr = int(addr)
-    result = identified(addr)
-    match args.labeltype:
-        case "1":
-            result = identified(addr)
-            debug("result=",result)
-        case "2":
-            if identified(addr) == "C":
-                result = "code"
-            else:
-                result = "data"
+    # addr = int(addr)
+    # result = identified(addr)
+    # debug("--> result=",result)
+    # match args.labeltype:
+    #     case "1":
+    #         debug("--> case 1")
+    #         result = identified(addr)
+    #         # debug("result=",result)
+    #     case "2":
+    #         debug("--> case 2")
+    #         if identified(addr) == "C":
+    #             result = "code"
+    #         elif identified(addr) == "S":
+    #             result="string"
+    #         else:
+    #             result = "data"
+    # dump_code_array("Label --->",addr)
+    # print("----!!!!-->",code[addr][2])
     if prettyprint != "":
         return (
-            f'{result}_{addr:X}:{" ":9}'
+            # f'{result}_{addr:X}:{" ":9}'
+            f'{code[addr][2]}'
             if (code[addr][2]!="")
             and (is_in_code(addr))
             else hex(addr)
         )
     else:
+        debug("---> hit lookup_label end")
         return (
-            f"{result}_{addr:X}"
+            # f"{result}_{addr:X}"
+            f'{code[addr][2]}{" ":9}'
             if (code[addr][2]!="")
             and (is_in_code(addr))
             else hex(addr)
@@ -543,12 +659,55 @@ def handle_jump(b, current_address):
             return to_number(b.operands[1][1])
     return None
 
+def print_label(addr):
+    debug(f"print_label({addr})")
+    global stats_c_labels
+    global stats_d_labels
+    if (addr in labels) or (addr in template_labels):
+        if lookup_label(addr,1)[0]!="0": # Edge case fix. Sometimes I was getting hex codes as a label
+            if (code[addr][2]!=""):
+                labelname=code[addr][2]+":"
+                debug("0: code array",labelname)
+            elif (addr in template_labels):
+                labelname=template_labels[addr]+":"
+                debug("1:",labelname)
+            else:
+                labelname=lookup_label(addr,1)+":"
+                debug("2:",labelname)
+
+            if code[addr][1]=="C":
+                stats_c_labels=stats_c_labels+1
+            else:
+                stats_d_labels=stats_d_labels+1
+
+            if args.style == "asm":
+                do_write(";--------------------------------------")
+                do_write()
+                # print(f'{lookup_label(loc + code_org)}_{loc + code_org:X}:'+f'{" ":23} ; {" ":8}' , end='XREF=')
+                tmp_str=f'{labelname:30} ; {" ":8} {xrefstr}'
+                # print(labels)
+                if args.xref == "on":
+                    for tmp in labels[program_counter]:
+                        tmp_str=tmp_str+f'0x{tmp:X} '
+                do_write(tmp_str)
+            else:
+                do_write(
+                    ";----------------------------------------------------------------------------"
+                )
+                do_write("")
+                tmp_str=f'{"":24}     {labelname:30} ; {xrefstr}'
+                if args.xref == "on":
+                    for tmp in labels[program_counter]:
+                        tmp_str=tmp_str+f"0x{tmp:X} "
+                do_write(tmp_str)
+
 
 def findstring(memstart, memend):
     """
     Regex find strings
     I need to figure out a better way to scan these
     """
+    # dump_code_array()
 
     pattern = re.compile(b"[ -~]{%d,}" % min_length)
 
@@ -569,7 +728,7 @@ def findstring(memstart, memend):
         if re.search(r"[A-Za-z]{3,}", s):
             str_locations[code_org + start] = s
             str_sizes[code_org + start] = end - start
-            mark_handled(code_org + start, end - start, "D")
+            mark_handled(code_org + start, end - start-1, "S")
     print_progress_bar(len(bin_data), len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
 #------============ Main Area ============------
 #
@@ -638,7 +797,7 @@ while loc <= end_of_code:
             # print(hex(tmp_data_addr))
             if is_in_code(tmp_data_addr):
                 mark_handled(tmp_data_addr, 2, "D")
-                update_labels(tmp_data_addr, loc)
+                update_xref(tmp_data_addr, loc)
     elif (b.op.name in ("JR", "CALL", "JP", "DJNZ")) and (b.operands[0][0] is not b.operands[0][0].REG_DEREF):
         jump_addr = handle_jump(b, loc)
         # debug("JP to ",hex(jump_addr))
@@ -652,7 +811,7 @@ while loc <= end_of_code:
             jump_locations[jump_addr] = hex(jump_addr)
             mark_handled(jump_addr, 1, "C")
             # mark_handled(loc, 1, "C")
-            update_labels(jump_addr, loc)
+            update_xref(jump_addr, loc)
         elif b.op is b.op.RET:
             mark_handled(loc, 1, "C")
     loc += b.len
@@ -712,6 +871,7 @@ if args.templatefile is not None:
 program_counter=min(code)
 print_progress_bar(program_counter-code_org, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
 
+# dump_code_array()
 while program_counter < max(code):
     print_progress_bar(program_counter-code_org, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
     # Build a decoding buffer
@@ -725,6 +885,11 @@ while program_counter < max(code):
         if (program_counter in template_labels):
             labelname=template_labels[program_counter]
         else:
+            # print(b)
+            # dump_code_array("what?",0xdb7b)
+            # # print(z80.decode(b))
+            # print(z80.disasm(b))
+            debug("lookup label: ",hex(program_counter))
             labelname=lookup_label(program_counter,1)
         code[program_counter][3]=labelname
 
@@ -758,11 +923,15 @@ while program_counter < max(code):
             and b.operands[0][0] is not b.operands[0][0].REG_DEREF
         ):
             jump_addr = handle_jump(b, program_counter)
-            if jump_addr:
+            # print(jump_addr)
+            if jump_addr is not None:
                 this_opcode = b.op.name
                 if len(z80.disasm(b).split(",")) > 1:  # conditional jumps and calls
                     this_opcode = z80.disasm(b).split(",")[0] + ","
                 tmp = f"{this_opcode} " + lookup_label(jump_addr)
+                program_counter += b.len
+            else:
+                # Things like JP (IX) come here
                 program_counter += b.len
         elif b.op is b.op.LD:  # and b.operands[0][0] is not b.operands[0][0].REG_DEREF:
             data_addr = handle_data(b)
@@ -797,12 +966,14 @@ while program_counter < max(code):
 print_progress_bar(program_counter-code_org, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
 
 
-# -- Pass 2 --
-#Move Pass 1 into the main labels for output
+# -- Pass 5 --
+#Move temp labels into the main labels for output
 for loop in range(min(code),max(code)):
     code[loop][2]=code[loop][3]
 
 print("Pass 5: Produce final listing")
+# for a_address in range(0xc240,0xc260):
+#     dump_code_array("-->",a_address)
 program_counter=min(code)
 if args.style == "asm":
     do_write(f"org {hex(code_org)}")
@@ -817,6 +988,9 @@ while program_counter < max(code):
     for loop in range(0,codesize):
         decode_buffer[loop] = code[loop+program_counter][0]
     b = z80.decode(decode_buffer, 0)
+    # if 0xc246 <program_counter <0xc25d:
+
+
 
     # Next, handle labels
     if (program_counter in labels) or (program_counter in template_labels):
@@ -829,12 +1003,13 @@ while program_counter < max(code):
             stats_c_labels=stats_c_labels+1
         else:
             stats_d_labels=stats_d_labels+1
-
+        tmpl=labelname+":"
         if args.style == "asm":
             do_write(";--------------------------------------")
             do_write()
             # print(f'{lookup_label(loc + code_org)}_{loc + code_org:X}:'+f'{" ":23} ; {" ":8}' , end='XREF=')
-            tmp_str=f'{labelname:30} ; {" ":8} {xrefstr}'
+
+            tmp_str=f'{tmpl:30} ; {" ":8} {xrefstr}'
             if args.xref == "on":
                 for tmp in labels[program_counter]:
                     tmp_str=tmp_str+f'0x{tmp:X} '
@@ -844,23 +1019,68 @@ while program_counter < max(code):
                 ";----------------------------------------------------------------------------"
             )
             do_write("")
-            tmp_str=f'{"":24}     {labelname:30} ; {xrefstr}'
+            tmp_str=f'{"":24}     {tmpl:30} ; {xrefstr}'
             if args.xref == "on":
                 for tmp in labels[program_counter]:
                     tmp_str=tmp_str+f"0x{tmp:X} "
             do_write(tmp_str)
 
     #Next, process code and data
-    if identified(program_counter) == "D" and (program_counter in str_locations):
+    if identified(program_counter) == "S":
+        #String area
+        # string_counter=program_counter
+        # print_label(string_counter)
+        tmp_string=''
+        # dump_code_array("Check",program_counter)
+        strings = []
+        current_string = []
+        tmp_array = bytearray()
+        tmp_array_index=0
+        src_array_index=program_counter
+        result=""
+        # print("1:",hex(src_array_index))
+        while (identified(src_array_index) == "S") and not is_terminator(code[src_array_index][0]) and code[src_array_index][2]=="":
+            # print("2:",hex(src_array_index))
+            # print(tmp_array_index)
+            # dump_code_array("String Array:",src_array_index)
+            tmp_array.append(code[src_array_index][0])
+            src_array_index += 1
+            tmp_array_index +=1
+
+            cnt=program_counter
+            result=build_strings_from_binary_data(tmp_array)
+            # print("-->",result)
+            # result=result.replace('"', '",34,"').replace("\\", '", 0x5c, "')
+            # print("---->",result,code[src_array_index][1],---code[src_array_index][2],"\n")
+            # program_counter=program_counter+len(result)
+        str_len=len(result)
+        result=result.replace('"', '",34,"').replace("\\", '", 0x5c, "')
+        # print("-->",result,(identified(program_counter) == "S"),is_terminator(code[program_counter][0]))
+        # dump_code_array("-- term -->",program_counter,)
+        # print("-->",result)
+        if result!="":
+            program_counter=program_counter+str_len
+            code_output(program_counter-str_len,f'DEFB "{result}{decode_terminator(code[program_counter][0])}',list_address)
+            program_counter +=1
+        elif (identified(program_counter) == "S") and (code[program_counter][0]>0x80) and not is_terminator(code[program_counter][0]):
+            result=result+decode_terminator(code[program_counter][0]).replace('",',"")
+            code_output(program_counter-str_len,f'DEFB {result}',list_address)
+            program_counter +=1
+        else:
+            code_output(program_counter-str_len,f'DEFB {hex(code[program_counter][0])}',list_address)
+            program_counter +=1
+    elif identified(program_counter) == "D" and (program_counter in str_locations):
         #Its a string!
         code_output(
             program_counter, "DEFB " + str_locations[program_counter], list_address
         )
         program_counter += str_sizes[program_counter]
     elif identified(program_counter) == "D":
-        debug("D2 - 2")
+        # dump_code_array("---->",program_counter)
+
+        # debug("D2 - 2")
         if is_in_code(program_counter):
-            debug("D - 3")
+            # debug("D - 3")
             tmp = get_from_code(program_counter,0) #code[loc][0]
             out_tmp = (
                 f'"{chr(tmp)}"'
@@ -870,37 +1090,39 @@ while program_counter < max(code):
                 )
             )
             code_output(program_counter, "DEFB " + hex(tmp), list_address, out_tmp)
-            debug("PC Bump")
+            # debug("PC Bump")
             program_counter += 1 #FIXME - tripping PC too much?
     elif identified(program_counter) == "C":
-        debug("C2 - 1")
+        # debug("C2 - 1")
         b = z80.decode(decode_buffer, 0)
         conds = z80.disasm(b).split(",")[0] + ","
         if b.op in (b.op.JR, b.op.DJNZ):
-            debug("C - 1a")
-            debug("Processing relative jump")
+            # debug("C - 1a")
+            # debug("Processing relative jump")
             jump_addr = handle_jump(b, program_counter)
             this_opcode = b.op.name
             if len(z80.disasm(b).split(",")) > 1:  # conditional jumps and calls
                 this_opcode = z80.disasm(b).split(",")[0] + ","
-            if jump_addr:
+            if jump_addr is not None:
                 tmp = f"{this_opcode} " + lookup_label(jump_addr)
                 code_output(
                     program_counter,
                     tmp,
                     list_address,
-                    explain.code(tmp),
+                    explain.code(tmp,commentlevel),
                     add_extra_info(decode_buffer),
                 )
+                program_counter += b.len
+            else:
                 program_counter += b.len
         elif (
             b.op in (b.op.JP, b.op.CALL)
             and b.operands[0][0] is not b.operands[0][0].REG_DEREF
         ):
-            debug("C - 2")
+            # debug("C - 2")
             jump_addr = handle_jump(b, program_counter)
-            debug("Processing jump")
-            if jump_addr:
+            # debug("Processing jump")
+            if jump_addr is not None:
                 this_opcode = b.op.name
                 if len(z80.disasm(b).split(",")) > 1:  # conditional jumps and calls
                     this_opcode = z80.disasm(b).split(",")[0] + ","
@@ -909,12 +1131,14 @@ while program_counter < max(code):
                     program_counter,
                     tmp,
                     list_address,
-                    explain.code(z80.disasm(b)),
+                    explain.code(z80.disasm(b),commentlevel),
                     add_extra_info(decode_buffer),
                 )
                 program_counter += b.len
+            else:
+                program_counter += b.len
         elif b.op is b.op.LD:  # and b.operands[0][0] is not b.operands[0][0].REG_DEREF:
-            debug("C2 - 3")
+            # debug("C2 - 3")
             data_addr = handle_data(b)
             # print(data_addr)
             if data_addr is None:  # So something like LD A,(BC) or LD A,B
@@ -922,7 +1146,7 @@ while program_counter < max(code):
                     program_counter,
                     z80.disasm(b),
                     list_address,
-                    explain.code(z80.disasm(b)),
+                    explain.code(z80.disasm(b),commentlevel),
                     add_extra_info(decode_buffer),
                 )
                 program_counter += b.len
@@ -938,6 +1162,7 @@ while program_counter < max(code):
                     labelled = tmp.replace(
                         tmp_addr, ld_label
                     )  # Convert inline hex to L_xxxx label
+                    # print(labelled)
                 else:
                     labelled = tmp
                 str_for_comment = ""
@@ -950,16 +1175,17 @@ while program_counter < max(code):
                     program_counter,
                     labelled,
                     list_address,
-                    explain.code(labelled) + " " + str_for_comment,
+                    explain.code(labelled,commentlevel) + " " + str_for_comment,
                     add_extra_info(decode_buffer),
                 )
                 program_counter += b.len
         else:
+            # print(b,z80.disasm(b))
             code_output(
                 program_counter,
                 z80.disasm(b),
                 list_address,
-                explain.code(z80.disasm(b)),
+                explain.code(z80.disasm(b),commentlevel),
                 add_extra_info(decode_buffer),
             )
             program_counter += b.len
