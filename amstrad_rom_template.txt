@@ -30,3 +30,6 @@
 
 ;Here everthing between the pointer to the command table, and the address of the JP ROM_INIT address is strings
 (0xc004),(0xc007),s,RSX_COMMANDS
+
+;RODOS error messages
+0xfcc0,0xffff,s,ERROR_MESSAGES
