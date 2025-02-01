@@ -114,7 +114,7 @@ stats_labels=0 # Number of labels generated
 stats_d_labels =0 # data labels
 stats_c_labels =0 # code labels
 stats_loc=0 # Lines of code generated
-stay_in_code = True # Don't process strings, unless its after a RET, JP, or data label
+# stay_in_code = True # Don't process strings, unless its after a RET, JP, or data label
 strings_with_locations = []
 str_locations = {}
 str_sizes = {}
@@ -427,6 +427,14 @@ def parse_arguments():
         help="Enable or disable cross references for labels",
     )
     parser.add_argument(
+        "--stayincode",
+        dest="stay_in_code",
+        action="store_true",
+        # choices={"1", "2"},
+        default=False,
+        help="Don't try to decode data after a RET/JP",
+    )
+    parser.add_argument(
         "--labeltype",
         dest="labeltype",
         action="store",
@@ -453,6 +461,7 @@ def validate_arguments(argslist):
     """
 
     global asm_file
+    global stay_in_code
     # print(argslist)
     # Ensure that supplied arguments are valid
     if argslist.debug:  # pragma: no cover
@@ -469,6 +478,7 @@ def validate_arguments(argslist):
         terminator_list.append(to_number(args.stringterminator))
         # print(terminator_list)
     commentlevel=to_number(args.commentlevel)
+    stay_in_code=args.stay_in_code
 
 
 def code_output(address, code, display_address, comment="", added_details=""):
@@ -1107,10 +1117,10 @@ while program_counter < max(code):
 
         if code[program_counter][1]=="C":
             stats_c_labels=stats_c_labels+1
-            stay_in_code=True
+            # stay_in_code=True
         else:
             stats_d_labels=stats_d_labels+1
-            stay_in_code=False
+            # stay_in_code=False
         # if labelname[0]=="0":
         #     print("------->",program_counter,labelname)
             # dump_code_array("---------->",program_counter)
