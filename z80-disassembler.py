@@ -51,7 +51,7 @@ stats_labels=0 # Number of labels generated
 stats_d_labels =0 # data labels
 stats_c_labels =0 # code labels
 stats_loc=0 # Lines of code generated
-
+stay_in_code = True # Don't process strings, unless its after a RET, JP, or data label
 strings_with_locations = []
 str_locations = {}
 str_sizes = {}
@@ -839,6 +839,7 @@ id_sort = sorted(identified_areas)
 start = 0
 end = len(bin_data)
 findstring(start, end)
+
 # dump_code_array("Post pass 2",0xd8dc)
 # for data_area in id_sort:
 #     print(hex(data_area))
@@ -872,7 +873,6 @@ while loc <= max(code):
 print("Pass 4: Validate labels")
 code_snapshot = bytearray(8)
 loc = 0
-
 
 # dump_code_array()
 
@@ -980,6 +980,11 @@ print_progress_bar(program_counter-code_org, len(bin_data), prefix='    Progress
 
 
 # -- Pass 5 --
+# Now scan for characters that aren't printable but marked as strings.
+# I'll reflag these back to data.
+for loop in range(min(code),max(code)):
+    if code[loop][1]=="S" and code[loop][0]<32 and not is_terminator(code[loop][0]):
+        code[loop][1]="D"
 
 
 print("Pass 5: Produce final listing")
@@ -998,8 +1003,8 @@ else:
 
 print_progress_bar(0, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
 while program_counter < max(code):
-    if 0xca80 < program_counter <0xca93:
-        dump_code_array("--->",program_counter)
+    # if 0xca80 < program_counter <0xca93:
+    #     dump_code_array("--->",program_counter)
     print_progress_bar(program_counter-code_org, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
     # Build a decoding buffer
     codesize = min(4, end_of_code - program_counter)
@@ -1020,8 +1025,10 @@ while program_counter < max(code):
 
         if code[program_counter][1]=="C":
             stats_c_labels=stats_c_labels+1
+            stay_in_code=True
         else:
             stats_d_labels=stats_d_labels+1
+            stay_in_code=False
         # if labelname[0]=="0":
         #     print("------->",program_counter,labelname)
             # dump_code_array("---------->",program_counter)
@@ -1049,7 +1056,10 @@ while program_counter < max(code):
 
     #Next, process code and data
     known_string=""
-    if identified(program_counter) == "S":
+    # if  0xfcc0 < program_counter < 0xfffc:
+    #     dump_code_array("-->",program_counter)
+    if identified(program_counter) == "S" and not stay_in_code:
+
         # print("1",hex(program_counter),program_counter in str_locations)
         #check for the first way we gathered strings
         if program_counter in str_locations:
@@ -1062,7 +1072,7 @@ while program_counter < max(code):
             m=program_counter+l
 
             # print(f'pc={hex(program_counter)} l={l} m={hex(m)} str_loc={str_locations[program_counter]}')
-            program_counter=m
+            # program_counter=m
             if m<=0xffff:
                 # print("2 --- ",a)
                 # dump_code_array("---?0-->",program_counter)
@@ -1072,21 +1082,26 @@ while program_counter < max(code):
                     # print("3")
                     # found terminator, output it
                     # known_string=f'DEFB {b}{decode_terminator(code[m][0])}'
-                    code_output(orig,f'DEFB {b}{decode_terminator(code[m][0])}',list_address,f'{hex(orig)} to {hex(program_counter)}')
-                    program_counter +=1
+                    code_output(orig,f'DEFB {b}{decode_terminator(code[m][0])}',list_address,f'{hex(orig)} to {hex(orig+len(a)+1)}')
+                    # print(f'Bump 1 {hex(program_counter)}-->{hex(program_counter+len(a)-1)}')
+                    program_counter += len(a)-1
                 elif identified(m)=="S" and not is_terminator(code[m][0]):
                     # print("------>>>> 4")
+                    # Causing issues with some string endings
                     #No terminator, just dump the string
-                    code_output(orig,f'DEFB {b}"',list_address)
-                    program_counter += 1
+                    # print("-->", hex(program_counter),b)
+                    code_output(orig,f'DEFB {b}"',list_address,f'{hex(orig)} to {hex(orig+len(a)-2)}')
+                    # print(f'Bump 2 {hex(program_counter)}-->{hex(program_counter+len(a)-2)}')
+                    program_counter += len(a)-2
                     # program_counter=program_counter+len(b)
                     # str_locations[program_counter]
                 else:
                     # print("5")
-                    code_output(orig,f'DEFB {b}"',list_address)
-                    # program_counter += 1
+                    code_output(orig,f'DEFB {b}"',list_address,f'{hex(orig)} to {hex(orig+len(a)-2)}')
+                    # print(f'Bump 3 {hex(program_counter)}-->{hex(program_counter+len(a)-2)}')
+                    program_counter += len(a)-2
                     # print(hex(program_counter))
-        else:
+        elif not stay_in_code:
             # print("5")
             # It wasn't already handled as a string, so lets try and figure out what it is
             #String area
@@ -1129,31 +1144,34 @@ while program_counter < max(code):
             if result!="":
                 # if  0xf77b < program_counter < 0xf79c:
                 #     print("----> 1-",hex(program_counter),identified(program_counter))
-                program_counter=program_counter+str_len
+                # program_counter=program_counter+str_len
                 if identified(program_counter)=="S":
-                    code_output(program_counter-str_len,f'DEFB "{result}{decode_terminator(code[program_counter][0])}',list_address)
+                    code_output(program_counter,f'DEFB "{result}{decode_terminator(code[program_counter+str_len][0])}',list_address,f'{hex(program_counter)} to {hex(program_counter+str_len+1)}')
                     # Bump for terminator
-                    program_counter +=1
+                    # print(f'Bump 4 {hex(program_counter)}-->{hex(program_counter+str_len)}')
+                    program_counter +=str_len+1
                 else:
-                    code_output(program_counter-str_len,f'DEFB "{result}"',list_address)
+                    code_output(program_counter,f'DEFB 5 "{result}"',list_address)
             elif (identified(program_counter) == "S") and (code[program_counter][0]>0x80) and not is_terminator(code[program_counter][0]):
                 # if  0xf77b < program_counter < 0xf79c:
                 #     print("----> 2 -",hex(program_counter),identified(program_counter))
                 result=result+decode_terminator(code[program_counter][0]).replace('",',"")
                 code_output(program_counter-str_len,f'DEFB {result}',list_address)
-                program_counter +=1
+                # print(f'Bump 5 {hex(program_counter)}-->{hex(program_counter+1)}')
+                program_counter +=1 #str_len
             else:
-                # if  0xf77b < program_counter < 0xf79c:
                 # print("----> 3 -",hex(program_counter),identified(program_counter))
                 code_output(program_counter-str_len,f'DEFB {hex(code[program_counter][0])}',list_address)
+                # print(f'Bump 6 {hex(program_counter)}-->{hex(program_counter+1)}')
                 program_counter +=1
-    elif identified(program_counter) == "D" and (program_counter in str_locations):
+    elif identified(program_counter) == "D" and (program_counter in str_locations) and not stay_in_code:
         #Its a string!
         code_output(
             program_counter, "DEFB " + str_locations[program_counter], list_address
         )
+        # print(f'Bump 7 {hex(program_counter)}-->{hex(program_counter+str_sizes[program_counter])}')
         program_counter += str_sizes[program_counter]
-    elif identified(program_counter) == "D":
+    elif identified(program_counter) == "D" and not stay_in_code:
         # dump_code_array("---->",program_counter)
 
         # debug("D2 - 2")
@@ -1170,7 +1188,7 @@ while program_counter < max(code):
             code_output(program_counter, "DEFB " + hex(tmp), list_address, out_tmp)
             # debug("PC Bump")
             program_counter += 1 #FIXME - tripping PC too much?
-    elif identified(program_counter) == "C":
+    elif identified(program_counter) == "C" or (stay_in_code and identified(program_counter)!="C"):
         # debug("C2 - 1")
         b = z80.decode(decode_buffer, 0)
         conds = z80.disasm(b).split(",")[0] + ","
@@ -1237,7 +1255,7 @@ while program_counter < max(code):
                     tmp_data_addr <= code_org + len(bin_data)
                 ):
                     ld_label = lookup_label(handle_data(b))
-                    print("---->",hex(program_counter),ld_label,hex(handle_data(b)),code[handle_data(b)][2])
+                    # print("---->",hex(program_counter),ld_label,hex(handle_data(b)),code[handle_data(b)][2])
                     labelled = tmp.replace(
                         tmp_addr, ld_label
                     )  # Convert inline hex to L_xxxx label
