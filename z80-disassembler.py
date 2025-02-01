@@ -1,4 +1,67 @@
 #!/usr/bin/env python3
+"""
+BUG - softlock trigger, see "FIXME The C0C8 problem" futher down in code.
+
+I have an annoying softlock. It's caused by strings with just a terminator
+eg, a string array that looks like this:
+
+     defb 0
+     defb "error message 1",0
+     defb "error message 2",0
+
+It's this way because error_code=0 is success (no error)
+
+When building the string array this code builds as:
+
+    ""
+    "error message 1"
+    "error message 2"
+
+but the program counter increments based on length of string, but if it adds len("") to program_counter,
+that is actally "program_counter = program_counter + 0", so decoding locks up because the program_counter never advanced.
+
+So now I have a problem.
+
+In RODOS 2.19 there an instruction that decodes to "LD HL,string_C0C8"
+
+The problem is 0xC0C8 is actually the terminator for the ROM name (the M+0x80 part of DEFB "RODOS RO", 'M' + 0x80 )
+If I manually mark that address as data, I get a perfect compile. If I don't mark it as data, then the string for "RODOS ROM"
+causes the string_C0C8 label to be skipped.
+
+The obvious fix, therefore, is that I need to add a check to the LD address lookup handling to mark addresses that LD
+references as data ("D") so that the C0C8 location would be handled differently (it would a data in the middle of a string),
+and if I manually force that, it works exactly as planned. The label is produced, and the "M"+0x80 becomes "DEFB 0xCD"
+
+The problem (for some reason) is that if I add a check to the LD processing code that marks the address part of LD HL,nnnn as data, then
+for some reason this then causes the string at 0xFCC0 in RODOS to softlock, even though there should be nothing relating to that there.
+In fact, it should make the 0xFCC0 address decode better.
+
+The code at 0xFCC0 is:
+
+    ERROR_MESSAGES:                ;          XREF: 0xFB6E
+        DEFB "", 0x5c              ;0xfcc0:                       0xfcc0 to 0xfcc3
+        DEFB "Too many parameters", 0x5c  ;0xfcc1:                       0xfcc1 to 0xfcd7
+        DEFB "Bad file name", 0x5c  ;0xfcd5:                       0xfcd5 to 0xfce5
+        DEFB "Wrong number of parameters", 0x5c  ;0xfce3:                       0xfce3 to 0xfd00
+        DEFB "Bad dir", 0x5c       ;0xfcfe:                       0xfcfe to 0xfd08
+        DEFB "Bad character !", 0x5c  ;0xfd06:                       0xfd06 to 0xfd18
+        DEFB "Unknown command", 0x5c  ;0xfd16:                       0xfd16 to 0xfd28
+        DEFB "Access denied", 0x5c  ;0xfd26:                       0xfd26 to 0xfd36
+        DEFB " not found", 0x5c    ;0xfd34:                       0xfd34 to 0xfd41
+        DEFB "No match.", 0x5c     ;0xfd3f:                       0xfd3f to 0xfd4b
+        DEFB "Disc full !", 0x5c   ;0xfd49:                       0xfd49 to 0xfd57
+        DEFB "AMSDOS ?", 0x5c      ;0xfd55:                       0xfd55 to 0xfd60
+        DEFB "Warning *** CPM ROM missing ***", 0x5c  ;0xfd5e:                       0xfd5e to 0xfd80
+        DEFB "Dir already exists !", 0x5c  ;0xfd7e:                       0xfd7e to 0xfd95
+        DEFB "Bad drive", 0x5c     ;0xfd93:                       0xfd93 to 0xfd9f
+        DEFB "Unknown file-system !", 0x5c  ;0xfd9d:                       0xfd9d to 0xfdb5
+
+If add a check on zero length strings and flag that location as data, it royally screws up everything.
+
+So "What the actual duck?"
+"""
+
+
 # what do I need?
 # array for code store
 # - binary array, store at code location to simplify things
@@ -989,12 +1052,13 @@ for loop in range(min(code),max(code)):
 
 print("Pass 5: Produce final listing")
 #Move temp labels into the main labels for output
+#Finalise the labelling
 
 for loop in range(min(code),max(code)):
     code[loop][2]=code[loop][3]
+    if code[loop][1]=="S" and code[loop][0]<32 and not is_terminator(code[loop][0]):
+        code[loop][1]="D"
 
-# for a_address in range(0xca80,0xca96):
-#     dump_code_array("-->",a_address)
 program_counter=min(code)
 if args.style == "asm":
     do_write(f"org {hex(code_org)}")
@@ -1247,6 +1311,10 @@ while program_counter < max(code):
                 )
                 program_counter += b.len
             else:
+                #FIXME The C0C8 problem
+                # So now I have a problem. In RODOS 2.19 there an instruction that decodes to "LD HL,string_C0C8"
+                # The problem is 0xC0C8 is actually the terminator for the ROM name (the M+0x80 part of DEFB "RODOS RO", 'M' + 0x80 )
+                # If I manually mark that address as data, I get a perfect compile.
                 tmp = z80.disasm(b)
                 tmp_data_addr = handle_data(b)
                 tmp_addr = hex(handle_data(b))
