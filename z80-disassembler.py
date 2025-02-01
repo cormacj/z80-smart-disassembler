@@ -776,7 +776,6 @@ def findstring(memstart, memend):
 
     for s, start, end in strings_with_locations:
         if re.search(r"[A-Za-z]{3,}", s):
-            #FIXME
             for delims in terminator_list:
                 if s.count(chr(delims))>1:
                     l=len(s)-1
@@ -786,16 +785,28 @@ def findstring(memstart, memend):
                     res=split_string(s,chr(delims))
                     substr_loc=start
                     for subs in res:
+                        # print(subs)
+
+                        #FIXME The C0C8 issue root cause
                         # subs_plus=subs+chr(delims) # actually... never mind. We'll tack on the delimiter later...
-                        str_locations[code_org + substr_loc] = f'"{subs}"'
-                        # print("String (sub): ",hex(code_org+substr_loc),subs)
                         str_len=len(subs)
-                        str_sizes[code_org + substr_loc] = str_len
-                        mark_handled(code_org + substr_loc, str_len, "S")
-                        # if subs=="":
-                        #     print(f'->{subs}<-')
-                        #     substr_loc += 1
-                        # else:
+                        # #New fix code follows:
+                        # HOWEVER! If I do this it screws up the niceness of the decoded code (it becomes all one big string)
+                        if str_len==0:
+                            # # print("----Subs location:",hex(code_org + substr_loc))
+                            # code[code_org + substr_loc][1]="D" # Mark as data to avoid null string issues
+                            # #End of New fix code
+                            # print("Subs location:",hex(code_org + substr_loc))
+                            str_locations[code_org + substr_loc] = f'{hex(code[code_org+substr_loc][0])}'
+                            # print("String (sub): ",hex(code_org+substr_loc),subs)
+                            str_sizes[code_org + substr_loc] = 1
+                            mark_handled(code_org + substr_loc, str_len, "S")
+                        else:
+                            # print("Subs location:",hex(code_org + substr_loc))
+                            str_locations[code_org + substr_loc] = f'"{subs}"'
+                            # print("String (sub): ",hex(code_org+substr_loc),subs)
+                            str_sizes[code_org + substr_loc] = str_len
+                            mark_handled(code_org + substr_loc, str_len, "S")
                         substr_loc += (str_len+1) # remember we allow for the delimiter
                 else:
                     str_locations[code_org + start] = s
@@ -869,7 +880,7 @@ while loc <= end_of_code:
             tmp_addr = hex(handle_data(b))
             # print(hex(tmp_data_addr))
             if is_in_code(tmp_data_addr):
-                mark_handled(tmp_data_addr, 2, "D")
+                mark_handled(tmp_data_addr, 1, "D")
                 update_xref(tmp_data_addr, loc)
     elif (b.op.name in ("JR", "CALL", "JP", "DJNZ")) and (b.operands[0][0] is not b.operands[0][0].REG_DEREF):
         jump_addr = handle_jump(b, loc)
@@ -1016,10 +1027,17 @@ while program_counter < max(code):
                 tmp = z80.disasm(b)
                 tmp_data_addr = handle_data(b)
                 tmp_addr = hex(handle_data(b))
-                # mark_handled(tmp_data_addr, 2, "D")
-                if (tmp_data_addr >= code_org) and (
-                    tmp_data_addr <= code_org + len(bin_data)
-                ):
+                if is_in_code(tmp_data_addr):
+                    #We only want to mess with strings, ignore all previous instructions
+                    #FIXME The C0C8 actual fix. This causes a softlock at FFC0
+                    if code[tmp_data_addr][1]=="S" and is_terminator(code[tmp_data_addr][0]):
+                        # print(f"C0C8 fix. Code at {hex(tmp_data_addr)} is {code[tmp_data_addr][1]}")
+                        mark_handled(tmp_data_addr, 0, "D")
+                #End of fix
+                if is_in_code(tmp_data_addr):
+                # if (tmp_data_addr >= code_org) and (
+                #     tmp_data_addr <= code_org + len(bin_data)
+                # ):
                     # ld_label=f'{identified(handle_data(b))}_{handle_data(b):X}'
                     ld_label = lookup_label(handle_data(b))
                     labelled = tmp.replace(
@@ -1123,7 +1141,6 @@ while program_counter < max(code):
     # if  0xfcc0 < program_counter < 0xfffc:
     #     dump_code_array("-->",program_counter)
     if identified(program_counter) == "S" and not stay_in_code:
-
         # print("1",hex(program_counter),program_counter in str_locations)
         #check for the first way we gathered strings
         if program_counter in str_locations:
@@ -1215,7 +1232,8 @@ while program_counter < max(code):
                     # print(f'Bump 4 {hex(program_counter)}-->{hex(program_counter+str_len)}')
                     program_counter +=str_len+1
                 else:
-                    code_output(program_counter,f'DEFB 5 "{result}"',list_address)
+                    #Probably never called, but better safe etc etc
+                    code_output(program_counter,f'DEFB "{result}"',list_address)
             elif (identified(program_counter) == "S") and (code[program_counter][0]>0x80) and not is_terminator(code[program_counter][0]):
                 # if  0xf77b < program_counter < 0xf79c:
                 #     print("----> 2 -",hex(program_counter),identified(program_counter))
@@ -1319,9 +1337,10 @@ while program_counter < max(code):
                 tmp_data_addr = handle_data(b)
                 tmp_addr = hex(handle_data(b))
                 # mark_handled(tmp_data_addr, 2, "D")
-                if (tmp_data_addr >= code_org) and (
-                    tmp_data_addr <= code_org + len(bin_data)
-                ):
+                if is_in_code(tmp_data_addr):
+                # if (tmp_data_addr >= code_org) and (
+                #     tmp_data_addr <= code_org + len(bin_data)
+                # ):
                     ld_label = lookup_label(handle_data(b))
                     # print("---->",hex(program_counter),ld_label,hex(handle_data(b)),code[handle_data(b)][2])
                     labelled = tmp.replace(
