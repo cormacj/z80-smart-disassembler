@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
 """
+This program is designed to try and disassemble Z80 code and return something as close to the original
+as possible. This means that strings and data need to be identified, and all the code needs to processed
+and decoded.
+
+The difficulties with this are as follows:
+1. In Amstrad CPC land you can't always just go "Ok, heres the entry point, follow the code" because RSXs and
+   ROMs use a selection of jumps identified by the RSX commands. This is also complicated by the Z80 command "JP (IX)"
+2. Some strings look like code, and some code looks like string. This means that sometimes short strings will be missed,
+   and sometimes a string gets decoded with a jump to something thats not actually a routine.
+"""
+"""
 BUG - softlock trigger, see "FIXME The C0C8 problem" futher down in code.
 
 I have an annoying softlock. It's caused by strings with just a terminator
@@ -374,10 +385,10 @@ def to_number(n):
     """
     try:
         return int(str(n), 0)
-    except:
+    except Exception:
         try:
             return int('0x' + n, 0)
-        except:
+        except Exception:
             return float(n)
 
 def parse_arguments():
@@ -674,7 +685,7 @@ def handle_data(b):
     return None
 
 
-def handle_jump(b, current_address):
+def handle_jump(b, current_address,only_relative=False):
     """
     Figure out the actual address of a relative jump, or just return the address.
     The disassembler library decodes a relative jump wierdly:
@@ -704,7 +715,10 @@ def handle_jump(b, current_address):
             relative_correction = to_number(b.operands[0][1])
         elif b.operands[1][0] is b.operands[1][0].ADDR:
             relative_correction = to_number(b.operands[1][1])
-        return current_address+relative_correction
+        if only_relative:
+            return relative_correction
+        else:
+            return current_address+relative_correction
     elif ("(" not in z80.disasm(b)) and b.operands[0][0] is not b.operands[0][0].REG_DEREF:  # if not a JP (HL)
         if b.operands[0][0] is b.operands[0][0].ADDR:
             # print(hex(b.operands[0][1]))
@@ -929,7 +943,7 @@ findstring(start, end)
 #     print(hex(data_area))
 #     if data_area > code_org and data_area < (code_org + len(bin_data)):
 #         # print(hex(data_area),identified_areas[data_area])
-  #         if (identified_areas[data_area] == "D") and (start == 0):
+#         if (identified_areas[data_area] == "D") and (start == 0):
 #             # print(hex(data_area)," --> Data start", )
 #             start = data_area
 #         elif (identified_areas[data_area] == "C") and (start != 0):
@@ -1150,7 +1164,8 @@ while program_counter < max(code):
     known_string=""
     # if  0xfcc0 < program_counter < 0xfffc:
     #     dump_code_array("-->",program_counter)
-    if identified(program_counter) == "S" and not stay_in_code:
+    #
+    if identified(program_counter) == "S":
         # print("1",hex(program_counter),program_counter in str_locations)
         #check for the first way we gathered strings
         if program_counter in str_locations:
@@ -1192,7 +1207,8 @@ while program_counter < max(code):
                     # print(f'Bump 3 {hex(program_counter)}-->{hex(program_counter+len(a)-2)}')
                     program_counter += len(a)-2
                     # print(hex(program_counter))
-        elif not stay_in_code:
+        # elif not stay_in_code:
+        else:
             # print("5")
             # It wasn't already handled as a string, so lets try and figure out what it is
             #String area
@@ -1256,14 +1272,16 @@ while program_counter < max(code):
                 code_output(program_counter-str_len,f'DEFB {hex(code[program_counter][0])}',list_address)
                 # print(f'Bump 6 {hex(program_counter)}-->{hex(program_counter+1)}')
                 program_counter +=1
-    elif identified(program_counter) == "D" and (program_counter in str_locations) and not stay_in_code:
+    # elif identified(program_counter) == "D" and (program_counter in str_locations) and not stay_in_code:
+    elif identified(program_counter) == "D" and (program_counter in str_locations):
         #Its a string!
         code_output(
             program_counter, "DEFB " + str_locations[program_counter], list_address
         )
         # print(f'Bump 7 {hex(program_counter)}-->{hex(program_counter+str_sizes[program_counter])}')
         program_counter += str_sizes[program_counter]
-    elif identified(program_counter) == "D" and not stay_in_code:
+    # elif identified(program_counter) == "D" and not stay_in_code:
+    elif identified(program_counter) == "D":
         # dump_code_array("---->",program_counter)
 
         # debug("D2 - 2")
@@ -1280,7 +1298,7 @@ while program_counter < max(code):
             code_output(program_counter, "DEFB " + hex(tmp), list_address, out_tmp)
             # debug("PC Bump")
             program_counter += 1 #FIXME - tripping PC too much?
-    elif identified(program_counter) == "C" or (stay_in_code and identified(program_counter)!="C"):
+    elif identified(program_counter) == "C": # or (stay_in_code and identified(program_counter)!="C"):
         # debug("C2 - 1")
         b = z80.decode(decode_buffer, 0)
         conds = z80.disasm(b).split(",")[0] + ","
@@ -1288,11 +1306,26 @@ while program_counter < max(code):
             # debug("C - 1a")
             # debug("Processing relative jump")
             jump_addr = handle_jump(b, program_counter)
+            # print(hex(jump_addr),lookup_label(jump_addr))
+            djnz_addr=lookup_label(jump_addr)
             this_opcode = b.op.name
             if len(z80.disasm(b).split(",")) > 1:  # conditional jumps and calls
                 this_opcode = z80.disasm(b).split(",")[0] + ","
             if jump_addr is not None:
-                tmp = f"{this_opcode} " + lookup_label(jump_addr)
+                if djnz_addr[0]=="0": # It's not a label, so we need to reformat
+                    # print(b,f'\nja={hex(jump_addr)}, pc={hex(program_counter)} {program_counter-jump_addr} {handle_jump(b,program_counter,True)}')
+                    jump_addr=handle_jump(b,program_counter,True) # The True here requests just the relative offset, no adjusting
+                    if jump_addr>=0:
+                        oper="+"
+                    else:
+                        oper=""
+                    # Relative addresses are either -127 to +128
+                    # Assembler directives are usually something like $+10 or $-15
+                    # where $ is the current location, so this code adds the operator
+                    # if its positive
+                    tmp=f"{this_opcode} ${oper}{handle_jump(b,program_counter,True)} "
+                else:
+                    tmp = f"{this_opcode} " + lookup_label(jump_addr)
                 code_output(
                     program_counter,
                     tmp,
@@ -1393,4 +1426,4 @@ print()
 print("Lines of code:",stats_loc)
 print("Code Labels:",stats_c_labels)
 print("Data Labels:",stats_d_labels)
-# dump_code_array()
+dump_code_array()
