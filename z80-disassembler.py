@@ -1,4 +1,78 @@
 #!/usr/bin/env python3
+"""
+This program is designed to try and disassemble Z80 code and return something as close to the original
+as possible. This means that strings and data need to be identified, and all the code needs to processed
+and decoded.
+
+The difficulties with this are as follows:
+1. In Amstrad CPC land you can't always just go "Ok, heres the entry point, follow the code" because RSXs and
+   ROMs use a selection of jumps identified by the RSX commands. This is also complicated by the Z80 command "JP (IX)"
+2. Some strings look like code, and some code looks like string. This means that sometimes short strings will be missed,
+   and sometimes a string gets decoded with a jump to something thats not actually a routine.
+"""
+"""
+BUG - softlock trigger, see "FIXME The C0C8 problem" futher down in code.
+
+I have an annoying softlock. It's caused by strings with just a terminator
+eg, a string array that looks like this:
+
+     defb 0
+     defb "error message 1",0
+     defb "error message 2",0
+
+It's this way because error_code=0 is success (no error)
+
+When building the string array this code builds as:
+
+    ""
+    "error message 1"
+    "error message 2"
+
+but the program counter increments based on length of string, but if it adds len("") to program_counter,
+that is actally "program_counter = program_counter + 0", so decoding locks up because the program_counter never advanced.
+
+So now I have a problem.
+
+In RODOS 2.19 there an instruction that decodes to "LD HL,string_C0C8"
+
+The problem is 0xC0C8 is actually the terminator for the ROM name (the M+0x80 part of DEFB "RODOS RO", 'M' + 0x80 )
+If I manually mark that address as data, I get a perfect compile. If I don't mark it as data, then the string for "RODOS ROM"
+causes the string_C0C8 label to be skipped.
+
+The obvious fix, therefore, is that I need to add a check to the LD address lookup handling to mark addresses that LD
+references as data ("D") so that the C0C8 location would be handled differently (it would a data in the middle of a string),
+and if I manually force that, it works exactly as planned. The label is produced, and the "M"+0x80 becomes "DEFB 0xCD"
+
+The problem (for some reason) is that if I add a check to the LD processing code that marks the address part of LD HL,nnnn as data, then
+for some reason this then causes the string at 0xFCC0 in RODOS to softlock, even though there should be nothing relating to that there.
+In fact, it should make the 0xFCC0 address decode better.
+
+The code at 0xFCC0 is:
+
+    ERROR_MESSAGES:                ;          XREF: 0xFB6E
+        DEFB "", 0x5c              ;0xfcc0:                       0xfcc0 to 0xfcc3
+        DEFB "Too many parameters", 0x5c  ;0xfcc1:                       0xfcc1 to 0xfcd7
+        DEFB "Bad file name", 0x5c  ;0xfcd5:                       0xfcd5 to 0xfce5
+        DEFB "Wrong number of parameters", 0x5c  ;0xfce3:                       0xfce3 to 0xfd00
+        DEFB "Bad dir", 0x5c       ;0xfcfe:                       0xfcfe to 0xfd08
+        DEFB "Bad character !", 0x5c  ;0xfd06:                       0xfd06 to 0xfd18
+        DEFB "Unknown command", 0x5c  ;0xfd16:                       0xfd16 to 0xfd28
+        DEFB "Access denied", 0x5c  ;0xfd26:                       0xfd26 to 0xfd36
+        DEFB " not found", 0x5c    ;0xfd34:                       0xfd34 to 0xfd41
+        DEFB "No match.", 0x5c     ;0xfd3f:                       0xfd3f to 0xfd4b
+        DEFB "Disc full !", 0x5c   ;0xfd49:                       0xfd49 to 0xfd57
+        DEFB "AMSDOS ?", 0x5c      ;0xfd55:                       0xfd55 to 0xfd60
+        DEFB "Warning *** CPM ROM missing ***", 0x5c  ;0xfd5e:                       0xfd5e to 0xfd80
+        DEFB "Dir already exists !", 0x5c  ;0xfd7e:                       0xfd7e to 0xfd95
+        DEFB "Bad drive", 0x5c     ;0xfd93:                       0xfd93 to 0xfd9f
+        DEFB "Unknown file-system !", 0x5c  ;0xfd9d:                       0xfd9d to 0xfdb5
+
+If add a check on zero length strings and flag that location as data, it royally screws up everything.
+
+So "What the actual duck?"
+"""
+
+
 # what do I need?
 # array for code store
 # - binary array, store at code location to simplify things
@@ -51,7 +125,7 @@ stats_labels=0 # Number of labels generated
 stats_d_labels =0 # data labels
 stats_c_labels =0 # code labels
 stats_loc=0 # Lines of code generated
-stay_in_code = True # Don't process strings, unless its after a RET, JP, or data label
+# stay_in_code = True # Don't process strings, unless its after a RET, JP, or data label
 strings_with_locations = []
 str_locations = {}
 str_sizes = {}
@@ -311,10 +385,10 @@ def to_number(n):
     """
     try:
         return int(str(n), 0)
-    except:
+    except Exception:
         try:
             return int('0x' + n, 0)
-        except:
+        except Exception:
             return float(n)
 
 def parse_arguments():
@@ -364,6 +438,14 @@ def parse_arguments():
         help="Enable or disable cross references for labels",
     )
     parser.add_argument(
+        "--stayincode",
+        dest="stay_in_code",
+        action="store_true",
+        # choices={"1", "2"},
+        default=False,
+        help="Don't try to decode data after a RET/JP",
+    )
+    parser.add_argument(
         "--labeltype",
         dest="labeltype",
         action="store",
@@ -390,6 +472,7 @@ def validate_arguments(argslist):
     """
 
     global asm_file
+    global stay_in_code
     # print(argslist)
     # Ensure that supplied arguments are valid
     if argslist.debug:  # pragma: no cover
@@ -406,6 +489,7 @@ def validate_arguments(argslist):
         terminator_list.append(to_number(args.stringterminator))
         # print(terminator_list)
     commentlevel=to_number(args.commentlevel)
+    stay_in_code=args.stay_in_code
 
 
 def code_output(address, code, display_address, comment="", added_details=""):
@@ -601,7 +685,7 @@ def handle_data(b):
     return None
 
 
-def handle_jump(b, current_address):
+def handle_jump(b, current_address,only_relative=False):
     """
     Figure out the actual address of a relative jump, or just return the address.
     The disassembler library decodes a relative jump wierdly:
@@ -631,7 +715,10 @@ def handle_jump(b, current_address):
             relative_correction = to_number(b.operands[0][1])
         elif b.operands[1][0] is b.operands[1][0].ADDR:
             relative_correction = to_number(b.operands[1][1])
-        return current_address+relative_correction
+        if only_relative:
+            return relative_correction
+        else:
+            return current_address+relative_correction
     elif ("(" not in z80.disasm(b)) and b.operands[0][0] is not b.operands[0][0].REG_DEREF:  # if not a JP (HL)
         if b.operands[0][0] is b.operands[0][0].ADDR:
             # print(hex(b.operands[0][1]))
@@ -713,7 +800,6 @@ def findstring(memstart, memend):
 
     for s, start, end in strings_with_locations:
         if re.search(r"[A-Za-z]{3,}", s):
-            #FIXME
             for delims in terminator_list:
                 if s.count(chr(delims))>1:
                     l=len(s)-1
@@ -723,16 +809,28 @@ def findstring(memstart, memend):
                     res=split_string(s,chr(delims))
                     substr_loc=start
                     for subs in res:
+                        # print(subs)
+
+                        #FIXME The C0C8 issue root cause
                         # subs_plus=subs+chr(delims) # actually... never mind. We'll tack on the delimiter later...
-                        str_locations[code_org + substr_loc] = f'"{subs}"'
-                        # print("String (sub): ",hex(code_org+substr_loc),subs)
                         str_len=len(subs)
-                        str_sizes[code_org + substr_loc] = str_len
-                        mark_handled(code_org + substr_loc, str_len, "S")
-                        # if subs=="":
-                        #     print(f'->{subs}<-')
-                        #     substr_loc += 1
-                        # else:
+                        # #New fix code follows:
+                        # HOWEVER! If I do this it screws up the niceness of the decoded code (it becomes all one big string)
+                        if str_len==0:
+                            # # print("----Subs location:",hex(code_org + substr_loc))
+                            # code[code_org + substr_loc][1]="D" # Mark as data to avoid null string issues
+                            # #End of New fix code
+                            # print("Subs location:",hex(code_org + substr_loc))
+                            str_locations[code_org + substr_loc] = f'{hex(code[code_org+substr_loc][0])}'
+                            # print("String (sub): ",hex(code_org+substr_loc),subs)
+                            str_sizes[code_org + substr_loc] = 1
+                            mark_handled(code_org + substr_loc, str_len, "S")
+                        else:
+                            # print("Subs location:",hex(code_org + substr_loc))
+                            str_locations[code_org + substr_loc] = f'"{subs}"'
+                            # print("String (sub): ",hex(code_org+substr_loc),subs)
+                            str_sizes[code_org + substr_loc] = str_len
+                            mark_handled(code_org + substr_loc, str_len, "S")
                         substr_loc += (str_len+1) # remember we allow for the delimiter
                 else:
                     str_locations[code_org + start] = s
@@ -806,7 +904,7 @@ while loc <= end_of_code:
             tmp_addr = hex(handle_data(b))
             # print(hex(tmp_data_addr))
             if is_in_code(tmp_data_addr):
-                mark_handled(tmp_data_addr, 2, "D")
+                mark_handled(tmp_data_addr, 1, "D")
                 update_xref(tmp_data_addr, loc)
     elif (b.op.name in ("JR", "CALL", "JP", "DJNZ")) and (b.operands[0][0] is not b.operands[0][0].REG_DEREF):
         jump_addr = handle_jump(b, loc)
@@ -845,7 +943,7 @@ findstring(start, end)
 #     print(hex(data_area))
 #     if data_area > code_org and data_area < (code_org + len(bin_data)):
 #         # print(hex(data_area),identified_areas[data_area])
-  #         if (identified_areas[data_area] == "D") and (start == 0):
+#         if (identified_areas[data_area] == "D") and (start == 0):
 #             # print(hex(data_area)," --> Data start", )
 #             start = data_area
 #         elif (identified_areas[data_area] == "C") and (start != 0):
@@ -953,10 +1051,17 @@ while program_counter < max(code):
                 tmp = z80.disasm(b)
                 tmp_data_addr = handle_data(b)
                 tmp_addr = hex(handle_data(b))
-                # mark_handled(tmp_data_addr, 2, "D")
-                if (tmp_data_addr >= code_org) and (
-                    tmp_data_addr <= code_org + len(bin_data)
-                ):
+                if is_in_code(tmp_data_addr):
+                    #We only want to mess with strings, ignore all previous instructions
+                    #FIXME The C0C8 actual fix. This causes a softlock at FFC0
+                    if code[tmp_data_addr][1]=="S" and is_terminator(code[tmp_data_addr][0]):
+                        # print(f"C0C8 fix. Code at {hex(tmp_data_addr)} is {code[tmp_data_addr][1]}")
+                        mark_handled(tmp_data_addr, 0, "D")
+                #End of fix
+                if is_in_code(tmp_data_addr):
+                # if (tmp_data_addr >= code_org) and (
+                #     tmp_data_addr <= code_org + len(bin_data)
+                # ):
                     # ld_label=f'{identified(handle_data(b))}_{handle_data(b):X}'
                     ld_label = lookup_label(handle_data(b))
                     labelled = tmp.replace(
@@ -989,12 +1094,13 @@ for loop in range(min(code),max(code)):
 
 print("Pass 5: Produce final listing")
 #Move temp labels into the main labels for output
+#Finalise the labelling
 
 for loop in range(min(code),max(code)):
     code[loop][2]=code[loop][3]
+    if code[loop][1]=="S" and code[loop][0]<32 and not is_terminator(code[loop][0]):
+        code[loop][1]="D"
 
-# for a_address in range(0xca80,0xca96):
-#     dump_code_array("-->",a_address)
 program_counter=min(code)
 if args.style == "asm":
     do_write(f"org {hex(code_org)}")
@@ -1025,10 +1131,10 @@ while program_counter < max(code):
 
         if code[program_counter][1]=="C":
             stats_c_labels=stats_c_labels+1
-            stay_in_code=True
+            # stay_in_code=True
         else:
             stats_d_labels=stats_d_labels+1
-            stay_in_code=False
+            # stay_in_code=False
         # if labelname[0]=="0":
         #     print("------->",program_counter,labelname)
             # dump_code_array("---------->",program_counter)
@@ -1058,8 +1164,8 @@ while program_counter < max(code):
     known_string=""
     # if  0xfcc0 < program_counter < 0xfffc:
     #     dump_code_array("-->",program_counter)
-    if identified(program_counter) == "S" and not stay_in_code:
-
+    #
+    if identified(program_counter) == "S":
         # print("1",hex(program_counter),program_counter in str_locations)
         #check for the first way we gathered strings
         if program_counter in str_locations:
@@ -1101,7 +1207,8 @@ while program_counter < max(code):
                     # print(f'Bump 3 {hex(program_counter)}-->{hex(program_counter+len(a)-2)}')
                     program_counter += len(a)-2
                     # print(hex(program_counter))
-        elif not stay_in_code:
+        # elif not stay_in_code:
+        else:
             # print("5")
             # It wasn't already handled as a string, so lets try and figure out what it is
             #String area
@@ -1151,7 +1258,8 @@ while program_counter < max(code):
                     # print(f'Bump 4 {hex(program_counter)}-->{hex(program_counter+str_len)}')
                     program_counter +=str_len+1
                 else:
-                    code_output(program_counter,f'DEFB 5 "{result}"',list_address)
+                    #Probably never called, but better safe etc etc
+                    code_output(program_counter,f'DEFB "{result}"',list_address)
             elif (identified(program_counter) == "S") and (code[program_counter][0]>0x80) and not is_terminator(code[program_counter][0]):
                 # if  0xf77b < program_counter < 0xf79c:
                 #     print("----> 2 -",hex(program_counter),identified(program_counter))
@@ -1164,14 +1272,16 @@ while program_counter < max(code):
                 code_output(program_counter-str_len,f'DEFB {hex(code[program_counter][0])}',list_address)
                 # print(f'Bump 6 {hex(program_counter)}-->{hex(program_counter+1)}')
                 program_counter +=1
-    elif identified(program_counter) == "D" and (program_counter in str_locations) and not stay_in_code:
+    # elif identified(program_counter) == "D" and (program_counter in str_locations) and not stay_in_code:
+    elif identified(program_counter) == "D" and (program_counter in str_locations):
         #Its a string!
         code_output(
             program_counter, "DEFB " + str_locations[program_counter], list_address
         )
         # print(f'Bump 7 {hex(program_counter)}-->{hex(program_counter+str_sizes[program_counter])}')
         program_counter += str_sizes[program_counter]
-    elif identified(program_counter) == "D" and not stay_in_code:
+    # elif identified(program_counter) == "D" and not stay_in_code:
+    elif identified(program_counter) == "D":
         # dump_code_array("---->",program_counter)
 
         # debug("D2 - 2")
@@ -1188,7 +1298,7 @@ while program_counter < max(code):
             code_output(program_counter, "DEFB " + hex(tmp), list_address, out_tmp)
             # debug("PC Bump")
             program_counter += 1 #FIXME - tripping PC too much?
-    elif identified(program_counter) == "C" or (stay_in_code and identified(program_counter)!="C"):
+    elif identified(program_counter) == "C": # or (stay_in_code and identified(program_counter)!="C"):
         # debug("C2 - 1")
         b = z80.decode(decode_buffer, 0)
         conds = z80.disasm(b).split(",")[0] + ","
@@ -1196,11 +1306,26 @@ while program_counter < max(code):
             # debug("C - 1a")
             # debug("Processing relative jump")
             jump_addr = handle_jump(b, program_counter)
+            # print(hex(jump_addr),lookup_label(jump_addr))
+            djnz_addr=lookup_label(jump_addr)
             this_opcode = b.op.name
             if len(z80.disasm(b).split(",")) > 1:  # conditional jumps and calls
                 this_opcode = z80.disasm(b).split(",")[0] + ","
             if jump_addr is not None:
-                tmp = f"{this_opcode} " + lookup_label(jump_addr)
+                if djnz_addr[0]=="0": # It's not a label, so we need to reformat
+                    # print(b,f'\nja={hex(jump_addr)}, pc={hex(program_counter)} {program_counter-jump_addr} {handle_jump(b,program_counter,True)}')
+                    jump_addr=handle_jump(b,program_counter,True) # The True here requests just the relative offset, no adjusting
+                    if jump_addr>=0:
+                        oper="+"
+                    else:
+                        oper=""
+                    # Relative addresses are either -127 to +128
+                    # Assembler directives are usually something like $+10 or $-15
+                    # where $ is the current location, so this code adds the operator
+                    # if its positive
+                    tmp=f"{this_opcode} ${oper}{handle_jump(b,program_counter,True)} "
+                else:
+                    tmp = f"{this_opcode} " + lookup_label(jump_addr)
                 code_output(
                     program_counter,
                     tmp,
@@ -1247,13 +1372,18 @@ while program_counter < max(code):
                 )
                 program_counter += b.len
             else:
+                #FIXME The C0C8 problem
+                # So now I have a problem. In RODOS 2.19 there an instruction that decodes to "LD HL,string_C0C8"
+                # The problem is 0xC0C8 is actually the terminator for the ROM name (the M+0x80 part of DEFB "RODOS RO", 'M' + 0x80 )
+                # If I manually mark that address as data, I get a perfect compile.
                 tmp = z80.disasm(b)
                 tmp_data_addr = handle_data(b)
                 tmp_addr = hex(handle_data(b))
                 # mark_handled(tmp_data_addr, 2, "D")
-                if (tmp_data_addr >= code_org) and (
-                    tmp_data_addr <= code_org + len(bin_data)
-                ):
+                if is_in_code(tmp_data_addr):
+                # if (tmp_data_addr >= code_org) and (
+                #     tmp_data_addr <= code_org + len(bin_data)
+                # ):
                     ld_label = lookup_label(handle_data(b))
                     # print("---->",hex(program_counter),ld_label,hex(handle_data(b)),code[handle_data(b)][2])
                     labelled = tmp.replace(
@@ -1296,4 +1426,4 @@ print()
 print("Lines of code:",stats_loc)
 print("Code Labels:",stats_c_labels)
 print("Data Labels:",stats_d_labels)
-# dump_code_array()
+dump_code_array()

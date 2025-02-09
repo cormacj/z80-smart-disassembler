@@ -30,6 +30,56 @@ positional arguments:
     -c {0,2,1}, --commentlevel {0,2,1}
                           0: No code explanations 1: Data references only 2: Everything
 ```
+# Templates
+
+A template file is a standard text file. The format for the file is as follows:
+
+* Comments start with ";"
+* Template lines are formatted as:
+    `start address, end address, data type, label`
+
+  data types can be one of these:<br>
+    b = byte<br>
+    w = word<br>
+    s = string<br>
+    c = code<br>
+    p = pointer<br>
+
+  You can refer to a pointer by enclosing the address in (). When the disassembler sees this, it looks at the word at the pointer location and uses that value instead.
+
+  For example, in Amstrad ROMs 0xc004 is a pointer to the command names table. If a ROM has a value of `0xc123` at location `0xc004`, a template line should look like this:
+
+  `0xc006,(0xc004),c,JUMP_TABLE`
+
+  This is then treated in the disassember as mark locations `0xc006` to `0xc123` as code with the label for this area being `JUMP_TABLE`
+
+# Helper Scripts
+
+* generate_string_locations.sh
+
+  Usage: `./generate_string_locations.sh` <filename> <memory load location>
+
+  Example: `./generate_string_locations.sh CPMFILE.COM 0x100 >cpmfile_template.txt`
+
+  Description:
+  The disassembler will try to identify strings in the code, it does sometimes cause false generation of jump or data locations because it decoded a string as a JP or LD instruction.
+
+  This script will use the templating function of the disassembler to mark string areas in advance. Once these are marked, the disassembler will ignore those memory locations, assuming that someone knows better than it does.
+
+  This generator can create some false positives, so I'd advise looking over the generated template and commenting out (or removing) anything that doesn't look like a string.
+
+  The output is in this format:
+
+  ```
+  ;----
+  ;db "Out of memory."
+  0x16a,0x178,s,S_16a
+  ```
+  In this example, the `;----` is a seperator comment for readibility.
+
+  Next you have what it will potentially generate, in this case `;db "Out of memory."`
+
+  Next is the template line, using the format `start address, end address,s for string,label` so the disassembler marks everything between `0x16a` and `0x178` as a string and labels this area as `S_16a`
 
 # Example usage
 
@@ -64,9 +114,14 @@ Data Labels: 54
 # Known Issues
 
 * Generated code causes z80asm to crash.
-* String detection fails oddly towards the end of a ROM and maybe elsewhere.
+* String detection fails oddly towards the end of a ROM and maybe elsewhere, so use the `generate_string_locations.sh` helper script to make a template if this happens.
+
+# ToDo
+
+[ ] - Error handling, everywhere
 
 # Dependencies
 
 I use code from https://github.com/lwerdna/z80dis as the disassembler engine.
+
 This is included in this release.
