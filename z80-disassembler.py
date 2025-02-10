@@ -321,61 +321,64 @@ def process_template(filename):
     start_template = Pointer
     end_template = Pointer
 
-    with open(filename, mode ='r') as file:
-        csvFile = csv.reader(file)
-        for lines in csvFile:
-            # print("-------------------------------------")
-            # print(f'->{lines}<-')
-            if (lines!=[]):
-                if (lines[0][0]!=";"): #If not a comment or blank
-                    # print(lines)
-                    start_template=check_for_pointer(lines[0])
-                    if start_template.ispointer:
-                        begin=start_template.destination
-                        # print("is pointer",hex(begin))
-                    else:
-                        begin=start_template.source
-                        # print("NOT pointer",hex(begin))
+    try:
+        with open(filename, mode ='r') as file:
+            csvFile = csv.reader(file)
+            for lines in csvFile:
+                # print("-------------------------------------")
+                # print(f'->{lines}<-')
+                if (lines!=[]):
+                    if (lines[0][0]!=";"): #If not a comment or blank
+                        # print(lines)
+                        start_template=check_for_pointer(lines[0])
+                        if start_template.ispointer:
+                            begin=start_template.destination
+                            # print("is pointer",hex(begin))
+                        else:
+                            begin=start_template.source
+                            # print("NOT pointer",hex(begin))
 
-                    # print("***start***",hex(start_template.source),hex(start_template.destination))
-                    end_template=check_for_pointer(lines[1])
-                    # print("***end***",hex(end_template.source),hex(end_template.destination))
-                    # Next check for pointers and assign addresses as needed.
-                    if end_template.ispointer:
-                        end=end_template.destination
-                    else:
-                        end=end_template.source
-                    # print("begin,end:",hex(begin),hex(end))
-                    datatype=lines[2]
-                    label=lines[3]
-                    debug(f'Tagging {label}: {hex(begin)}')
-                    code[begin][2]=label
-                    code[begin][3]=label
-                    template_labels[begin]=label
-                    addr=begin
-                    match datatype.lower():
-                        # case 'b':
-                        #     for loop in range(begin,end):
-                        #         print(loop)
-                        #     mark_handled(addr,1,"D")
-                        case "w":
-                            mark_handled(addr,2,"D")
-                        case "c":
-                            print("Code:",hex(begin),hex(end))
-                            for loop in range(begin,end):
-                                mark_handled(loop,1,"C")
-                            mark_handled(addr,3,"C")
-                        case "p":
-                            mark_handled(addr,2,"D")
-                            code_loc=begin #Get the address where the pointer is pointing to
-                            mark_handled(code_loc,2,"D")
-                        case "s":
-                            for loop in range(begin,end-1):
-                                mark_handled(loop,1,"S")
-                        case _:
-                            print("Unknown data type: ",datatype.lower())
-                            exit
-
+                        # print("***start***",hex(start_template.source),hex(start_template.destination))
+                        end_template=check_for_pointer(lines[1])
+                        # print("***end***",hex(end_template.source),hex(end_template.destination))
+                        # Next check for pointers and assign addresses as needed.
+                        if end_template.ispointer:
+                            end=end_template.destination
+                        else:
+                            end=end_template.source
+                        # print("begin,end:",hex(begin),hex(end))
+                        datatype=lines[2]
+                        label=lines[3]
+                        debug(f'Tagging {label}: {hex(begin)}')
+                        code[begin][2]=label
+                        code[begin][3]=label
+                        template_labels[begin]=label
+                        addr=begin
+                        match datatype.lower():
+                            # case 'b':
+                            #     for loop in range(begin,end):
+                            #         print(loop)
+                            #     mark_handled(addr,1,"D")
+                            case "w":
+                                mark_handled(addr,2,"D")
+                            case "c":
+                                print("Code:",hex(begin),hex(end))
+                                for loop in range(begin,end):
+                                    mark_handled(loop,1,"C")
+                                mark_handled(addr,3,"C")
+                            case "p":
+                                mark_handled(addr,2,"D")
+                                code_loc=begin #Get the address where the pointer is pointing to
+                                mark_handled(code_loc,2,"D")
+                            case "s":
+                                for loop in range(begin,end-1):
+                                    mark_handled(loop,1,"S")
+                            case _:
+                                print("Unknown data type: ",datatype.lower())
+                                exit
+    except OSError:
+        print("Error: Could not open template file:", filename)
+        sys.exit(1)
 
 def to_number(n):
     """
@@ -461,6 +464,14 @@ def parse_arguments():
         default="0",
         help="0: No code explanations 1: Data references only  2: Everything",
     )
+    parser.add_argument(
+        "-a","--assembler",
+        dest="commentlevel",
+        action="store",
+        choices={"z88","z80asm", "maxam"},
+        default="0",
+        help="Format the code for particular assemblers",
+    )
     parser.add_argument("-d", "--debug", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     return args  # paramaterize everything
@@ -484,12 +495,36 @@ def validate_arguments(argslist):
     if argslist.outfile is not None:
         print("Writing code to ",argslist.outfile)
         print()
-        asm_file=open(args.outfile, 'w')
+        try:
+            asm_file=open(args.outfile, 'w')
+        except OSError:
+            print("Error: Could not write to output file:", args.outfile)
+            sys.exit(1)
+
     if args.stringterminator is not None:
         terminator_list.append(to_number(args.stringterminator))
         # print(terminator_list)
     commentlevel=to_number(args.commentlevel)
     stay_in_code=args.stay_in_code
+    #Now ensure that the template file can be opened
+    try:
+        if args.templatefile:
+            f=open(args.templatefile,'r')
+            f.close
+    except OSError:
+        print("Error: Could not open template file:", args.templatefile)
+        sys.exit(1)
+    #And ensure that the output file can be written
+    try:
+        if args.outfile:
+            f=open(args.outfile,'w')
+            f.write("\n")
+            f.close
+    except OSError:
+        print("Error: Could not write to output file:", args.outfile)
+        sys.exit(1)
+
+
 
 
 def code_output(address, code, display_address, comment="", added_details=""):
@@ -857,8 +892,12 @@ else:
 
 
 # Load binary file
-with open(args.filename, "rb") as f:
-    bin_data = f.read()
+try:
+    with open(args.filename, "rb") as f:
+        bin_data = f.read()
+except:
+    print("Error: Could not read file ", args.filename)
+    sys.exit(1)
 
 print_progress_bar(0, len(bin_data), prefix='Loading code:', suffix='Complete', length=50)
 
@@ -1421,9 +1460,11 @@ while program_counter < max(code):
         program_counter += 1
 print_progress_bar(program_counter-code_org, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
 print()
-print(args.outfile," created!")
+if args.outfile:
+    print(args.outfile," created!")
+
 print()
 print("Lines of code:",stats_loc)
 print("Code Labels:",stats_c_labels)
 print("Data Labels:",stats_d_labels)
-dump_code_array()
+# dump_code_array()
