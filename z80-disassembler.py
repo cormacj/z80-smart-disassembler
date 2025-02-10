@@ -464,6 +464,14 @@ def parse_arguments():
         default="0",
         help="0: No code explanations 1: Data references only  2: Everything",
     )
+    parser.add_argument(
+        "-a","--assembler",
+        dest="commentlevel",
+        action="store",
+        choices={"z88","z80asm", "maxam"},
+        default="0",
+        help="Format the code for particular assemblers",
+    )
     parser.add_argument("-d", "--debug", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     return args  # paramaterize everything
@@ -1454,7 +1462,7 @@ print_progress_bar(program_counter-code_org, len(bin_data), prefix='    Progress
 print()
 if args.outfile:
     print(args.outfile," created!")
-    
+
 print()
 print("Lines of code:",stats_loc)
 print("Code Labels:",stats_c_labels)
