@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+#BUG: LD A,(0x0009) isn't parsing out the hex part for labels
+#BUG: validate template to warn on out-of-bounds addresses
 """
 This program is designed to try and disassemble Z80 code and return something as close to the original
 as possible. This means that strings and data need to be identified, and all the code needs to processed
@@ -9,67 +11,6 @@ The difficulties with this are as follows:
    ROMs use a selection of jumps identified by the RSX commands. This is also complicated by the Z80 command "JP (IX)"
 2. Some strings look like code, and some code looks like string. This means that sometimes short strings will be missed,
    and sometimes a string gets decoded with a jump to something thats not actually a routine.
-"""
-"""
-BUG - softlock trigger, see "FIXME The C0C8 problem" futher down in code.
-
-I have an annoying softlock. It's caused by strings with just a terminator
-eg, a string array that looks like this:
-
-     defb 0
-     defb "error message 1",0
-     defb "error message 2",0
-
-It's this way because error_code=0 is success (no error)
-
-When building the string array this code builds as:
-
-    ""
-    "error message 1"
-    "error message 2"
-
-but the program counter increments based on length of string, but if it adds len("") to program_counter,
-that is actally "program_counter = program_counter + 0", so decoding locks up because the program_counter never advanced.
-
-So now I have a problem.
-
-In RODOS 2.19 there an instruction that decodes to "LD HL,string_C0C8"
-
-The problem is 0xC0C8 is actually the terminator for the ROM name (the M+0x80 part of DEFB "RODOS RO", 'M' + 0x80 )
-If I manually mark that address as data, I get a perfect compile. If I don't mark it as data, then the string for "RODOS ROM"
-causes the string_C0C8 label to be skipped.
-
-The obvious fix, therefore, is that I need to add a check to the LD address lookup handling to mark addresses that LD
-references as data ("D") so that the C0C8 location would be handled differently (it would a data in the middle of a string),
-and if I manually force that, it works exactly as planned. The label is produced, and the "M"+0x80 becomes "DEFB 0xCD"
-
-The problem (for some reason) is that if I add a check to the LD processing code that marks the address part of LD HL,nnnn as data, then
-for some reason this then causes the string at 0xFCC0 in RODOS to softlock, even though there should be nothing relating to that there.
-In fact, it should make the 0xFCC0 address decode better.
-
-The code at 0xFCC0 is:
-
-    ERROR_MESSAGES:                ;          XREF: 0xFB6E
-        DEFB "", 0x5c              ;0xfcc0:                       0xfcc0 to 0xfcc3
-        DEFB "Too many parameters", 0x5c  ;0xfcc1:                       0xfcc1 to 0xfcd7
-        DEFB "Bad file name", 0x5c  ;0xfcd5:                       0xfcd5 to 0xfce5
-        DEFB "Wrong number of parameters", 0x5c  ;0xfce3:                       0xfce3 to 0xfd00
-        DEFB "Bad dir", 0x5c       ;0xfcfe:                       0xfcfe to 0xfd08
-        DEFB "Bad character !", 0x5c  ;0xfd06:                       0xfd06 to 0xfd18
-        DEFB "Unknown command", 0x5c  ;0xfd16:                       0xfd16 to 0xfd28
-        DEFB "Access denied", 0x5c  ;0xfd26:                       0xfd26 to 0xfd36
-        DEFB " not found", 0x5c    ;0xfd34:                       0xfd34 to 0xfd41
-        DEFB "No match.", 0x5c     ;0xfd3f:                       0xfd3f to 0xfd4b
-        DEFB "Disc full !", 0x5c   ;0xfd49:                       0xfd49 to 0xfd57
-        DEFB "AMSDOS ?", 0x5c      ;0xfd55:                       0xfd55 to 0xfd60
-        DEFB "Warning *** CPM ROM missing ***", 0x5c  ;0xfd5e:                       0xfd5e to 0xfd80
-        DEFB "Dir already exists !", 0x5c  ;0xfd7e:                       0xfd7e to 0xfd95
-        DEFB "Bad drive", 0x5c     ;0xfd93:                       0xfd93 to 0xfd9f
-        DEFB "Unknown file-system !", 0x5c  ;0xfd9d:                       0xfd9d to 0xfdb5
-
-If add a check on zero length strings and flag that location as data, it royally screws up everything.
-
-So "What the actual duck?"
 """
 
 
@@ -130,10 +71,12 @@ strings_with_locations = []
 str_locations = {}
 str_sizes = {}
 style = "asm"
+hexstyle = "0x"
 myversion = "0.75"
 
 
 #--- Debugging functions ---
+
 def dump_code_array(label="",address=""):
     """
     A debug procedure to print out the data structure.
@@ -170,10 +113,14 @@ def is_terminator(byte):
         return False
 
 def decode_terminator(byte):
-    if byte>0x9f: #Asc 31+0x80
-        return f"\", '{chr(byte-0x80)}' + 0x80"
+    if asmtype()==3:
+        hextype="&"
     else:
-        return f"\", {hex(byte)}"
+        hextype="0x"
+    if byte>0x9f: #Asc 31+0x80
+        return f"\", '{chr(byte-0x80)}' + {hextype}80"
+    else:
+        return f"\", {hextype}{byte:02x}"
 
 def debug(message,arg1="",arg2="",arg3=""):
     """
@@ -182,6 +129,26 @@ def debug(message,arg1="",arg2="",arg3=""):
     if args.debug:
         print("*debug* ",message,arg1,arg2,arg3)
 #--------------------------------
+
+def asmtype():
+    """
+    Produce a shorthand version of assembler type so I don't constantly have to do if args.assembler=="maxam"
+    1=z88
+    2=z80asm
+    3=maxam
+    """
+    match args.assembler:
+        case "z88":
+            return 1
+        case "z80asm":
+            return 2
+        case "maxam":
+            return 3
+        case _:
+            print("Invalid assembler type in asmtype()")
+            sys.exit(1)
+
+
 def inc_program_counter(pc,inc):
     if pc+inc<=0xffff:
         return pc+inc
@@ -466,10 +433,10 @@ def parse_arguments():
     )
     parser.add_argument(
         "-a","--assembler",
-        dest="commentlevel",
+        dest="assembler",
         action="store",
         choices={"z88","z80asm", "maxam"},
-        default="0",
+        default="z88",
         help="Format the code for particular assemblers",
     )
     parser.add_argument("-d", "--debug", action="store_true", help=argparse.SUPPRESS)
@@ -484,8 +451,14 @@ def validate_arguments(argslist):
 
     global asm_file
     global stay_in_code
+    global hexstyle
     # print(argslist)
     # Ensure that supplied arguments are valid
+    if asmtype()==3:
+        hexstyle="&"
+    else:
+        hexstyle="0x"
+
     if argslist.debug:  # pragma: no cover
         print("--- debug output ---")
         print(f"  {argslist=}")
@@ -539,7 +512,7 @@ def code_output(address, code, display_address, comment="", added_details=""):
         added_details   - Optional: Currently used for text+hex dump
     """
     # print_label(address)
-    addr = f"{hex(address)}: " if display_address else ""
+    addr = f"{hexstyle}{address:x}: " if display_address else ""
     if args.style == "asm":
         do_write(f"    {code:25}  ;{addr} {added_details:20} {comment}")
     else:
@@ -642,8 +615,13 @@ def update_label_name(addr, type):
                 # else:
                 #     result = "data"
                 # print("-xx->2",result)
-
-        code[addr][2]=f'{result}_{addr:04X}'
+        if asmtype()==2 and args.labeltype==1:
+            # This is more of a fixup than anything else
+            # z80asm is quirky and doesn't like L_AB12 style labels
+            # label style 2 (code_ or data_) is fine because its longer
+            code[addr][2]=f'{result}{addr:04X}'
+        else:
+            code[addr][2]=f'{result}_{addr:04X}'
         # print("--XX-> Writing ",code[addr][2])
 
 def update_xref(addr, xref):
@@ -672,15 +650,20 @@ def lookup_label(addr, prettyprint=""):
     """
     if not is_in_code(addr):
         debug("-->Not in code")
-        return hex(addr)
-    if prettyprint != "":
-        return (
-            # f'{result}_{addr:X}:{" ":9}'
-            f'{code[addr][2]}'
-            if (code[addr][2]!="")
-            and (is_in_code(addr))
-            else hex(addr)
-        )
+        return f'{hexstyle}{addr:x}'
+    elif prettyprint != "":
+        # f'{result}_{addr:X}:{" ":9}'
+        # print(hex(addr))
+        # print(code[addr])
+        # dump_code_array(f"{is_in_code(addr)} ({addr})",addr)
+        if (code[addr][2]!="") and (is_in_code(addr)):
+            if asmtype()>1:
+                tmp=f'{code[addr][2]}'
+                return tmp.lower()
+            else:
+                return f'{code[addr][2]}'
+        else:
+            return f'{hexstyle}{addr:x}'
     else:
         debug("---> hit lookup_label end")
         return (
@@ -688,7 +671,7 @@ def lookup_label(addr, prettyprint=""):
             f'{code[addr][2]}{" ":9}'
             if (code[addr][2]!="")
             and (is_in_code(addr))
-            else hex(addr)
+            else f'{hexstyle}{addr:x}'
         )
 
 
@@ -709,6 +692,8 @@ def handle_data(b):
         return b.operands[0][1]
     elif b.operands[0][0] is b.operands[0][0].ADDR_DEREF:  # is a LD (0x1234),HL
         return b.operands[0][1]
+    elif b.operands[1][0] is b.operands[0][0].ADDR_DEREF:  # is a LD HL,(0x1234)
+        return b.operands[1][1]
     elif b.operands[1][0] is b.operands[1][0].IMM:  # is a LD (0x1234),HL
         return b.operands[1][1]
     if (b.operands[0][0] is b.operands[0][0].REG) or (
@@ -792,7 +777,7 @@ def print_label(addr):
                 # print(labels)
                 if args.xref == "on":
                     for tmp in labels[program_counter]:
-                        tmp_str=tmp_str+f'0x{tmp:X} '
+                        tmp_str=tmp_str+f'{hexstyle}{tmp:X} '
                 do_write(tmp_str)
             else:
                 do_write(
@@ -846,11 +831,7 @@ def findstring(memstart, memend):
                     for subs in res:
                         # print(subs)
 
-                        #FIXME The C0C8 issue root cause
-                        # subs_plus=subs+chr(delims) # actually... never mind. We'll tack on the delimiter later...
                         str_len=len(subs)
-                        # #New fix code follows:
-                        # HOWEVER! If I do this it screws up the niceness of the decoded code (it becomes all one big string)
                         if str_len==0:
                             # # print("----Subs location:",hex(code_org + substr_loc))
                             # code[code_org + substr_loc][1]="D" # Mark as data to avoid null string issues
@@ -895,6 +876,7 @@ else:
 try:
     with open(args.filename, "rb") as f:
         bin_data = f.read()
+    print(f"Disassembling {args.filename}: {len(bin_data)} bytes\n")
 except:
     print("Error: Could not read file ", args.filename)
     sys.exit(1)
@@ -1007,6 +989,8 @@ while loc <= max(code):
     last = code[loc][1]
     loc += 1
 
+# dump_code_array()
+
 print("Pass 4: Validate labels")
 code_snapshot = bytearray(8)
 loc = 0
@@ -1056,7 +1040,7 @@ while program_counter < max(code):
                 f'"{chr(tmp)}"'
                 if 31 < tmp < 127
                 else (
-                    f"('{chr(tmp - 0x80)}') + 0x80" if 31 < (tmp - 0x80) < 127 else hex(tmp)
+                    f"('{chr(tmp - 0x80)}') + {hexstyle}80" if 31 < (tmp - 0x80) < 127 else hex(tmp)
                 )
             )
             program_counter += 1
@@ -1092,9 +1076,7 @@ while program_counter < max(code):
                 tmp_addr = hex(handle_data(b))
                 if is_in_code(tmp_data_addr):
                     #We only want to mess with strings, ignore all previous instructions
-                    #FIXME The C0C8 actual fix. This causes a softlock at FFC0
                     if code[tmp_data_addr][1]=="S" and is_terminator(code[tmp_data_addr][0]):
-                        # print(f"C0C8 fix. Code at {hex(tmp_data_addr)} is {code[tmp_data_addr][1]}")
                         mark_handled(tmp_data_addr, 0, "D")
                 #End of fix
                 if is_in_code(tmp_data_addr):
@@ -1142,9 +1124,9 @@ for loop in range(min(code),max(code)):
 
 program_counter=min(code)
 if args.style == "asm":
-    do_write(f"org {hex(code_org)}")
+    do_write(f"org {hexstyle}{code_org:x}")
 else:
-    do_write(f"     org {hex(code_org)}")
+    do_write(f"     org {hexstyle}{code_org:x}")
 
 print_progress_bar(0, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
 while program_counter < max(code):
@@ -1161,12 +1143,12 @@ while program_counter < max(code):
     if (program_counter in labels) or (program_counter in template_labels):
         if (program_counter in template_labels):
             labelname=template_labels[program_counter]
-            if labelname[0]=="0":
-                print("1 used")
+            # if labelname[0]=="0":
+            #     print("1 used")
         else:
             labelname=lookup_label(program_counter,1)
-            if labelname[0]=="0":
-                print("2 used")
+            # if labelname[0]=="0":
+            #     print("2 used")
 
         if code[program_counter][1]=="C":
             stats_c_labels=stats_c_labels+1
@@ -1186,7 +1168,7 @@ while program_counter < max(code):
             tmp_str=f'{tmpl:30} ; {" ":8} {xrefstr}'
             if args.xref == "on":
                 for tmp in labels[program_counter]:
-                    tmp_str=tmp_str+f'0x{tmp:X} '
+                    tmp_str=tmp_str+f'{hexstyle}{tmp:X} '
             do_write(tmp_str)
         else:
             do_write(
@@ -1212,7 +1194,7 @@ while program_counter < max(code):
             # print("---? ",hex(program_counter),str_locations[program_counter])
             a=str_locations[program_counter]
             l=len(a)-2 #-2 because its quoted
-            b=a[0]+a[1:l+1].replace('"', '",34,"').replace("\\", '", 0x5c, "')
+            b=a[0]+a[1:l+1].replace('"', '",34,"').replace("\\", f'", {hexstyle}5c, "')
             # print("---?B ",b)
             m=program_counter+l
 
@@ -1227,7 +1209,7 @@ while program_counter < max(code):
                     # print("3")
                     # found terminator, output it
                     # known_string=f'DEFB {b}{decode_terminator(code[m][0])}'
-                    code_output(orig,f'DEFB {b}{decode_terminator(code[m][0])}',list_address,f'{hex(orig)} to {hex(orig+len(a)+1)}')
+                    code_output(orig,f'DEFB {b}{decode_terminator(code[m][0])}',list_address,f'{hexstyle}{orig:x} to {hexstyle}{(orig+len(a)+1):x}')
                     # print(f'Bump 1 {hex(program_counter)}-->{hex(program_counter+len(a)-1)}')
                     program_counter += len(a)-1
                 elif identified(m)=="S" and not is_terminator(code[m][0]):
@@ -1235,14 +1217,14 @@ while program_counter < max(code):
                     # Causing issues with some string endings
                     #No terminator, just dump the string
                     # print("-->", hex(program_counter),b)
-                    code_output(orig,f'DEFB {b}"',list_address,f'{hex(orig)} to {hex(orig+len(a)-2)}')
+                    code_output(orig,f'DEFB {b}"',list_address,f'{hexstyle}{orig:x} to {hexstyle}{orig+len(a)-2:x}')
                     # print(f'Bump 2 {hex(program_counter)}-->{hex(program_counter+len(a)-2)}')
                     program_counter += len(a)-2
                     # program_counter=program_counter+len(b)
                     # str_locations[program_counter]
                 else:
                     # print("5")
-                    code_output(orig,f'DEFB {b}"',list_address,f'{hex(orig)} to {hex(orig+len(a)-2)}')
+                    code_output(orig,f'DEFB {b}"',list_address,f'{hexstyle}{orig:x} to {hexstyle}{orig+len(a)-2:x}')
                     # print(f'Bump 3 {hex(program_counter)}-->{hex(program_counter+len(a)-2)}')
                     program_counter += len(a)-2
                     # print(hex(program_counter))
@@ -1292,7 +1274,7 @@ while program_counter < max(code):
                 #     print("----> 1-",hex(program_counter),identified(program_counter))
                 # program_counter=program_counter+str_len
                 if identified(program_counter)=="S":
-                    code_output(program_counter,f'DEFB "{result}{decode_terminator(code[program_counter+str_len][0])}',list_address,f'{hex(program_counter)} to {hex(program_counter+str_len+1)}')
+                    code_output(program_counter,f'DEFB "{result}{decode_terminator(code[program_counter+str_len][0])}',list_address,f'{hexstyle}{program_counter:x} to {hexstyle}{(program_counter+str_len+1):x}')
                     # Bump for terminator
                     # print(f'Bump 4 {hex(program_counter)}-->{hex(program_counter+str_len)}')
                     program_counter +=str_len+1
@@ -1308,7 +1290,7 @@ while program_counter < max(code):
                 program_counter +=1 #str_len
             else:
                 # print("----> 3 -",hex(program_counter),identified(program_counter))
-                code_output(program_counter-str_len,f'DEFB {hex(code[program_counter][0])}',list_address)
+                code_output(program_counter-str_len,f'DEFB {hexstyle}{(code[program_counter][0]):x}',list_address)
                 # print(f'Bump 6 {hex(program_counter)}-->{hex(program_counter+1)}')
                 program_counter +=1
     # elif identified(program_counter) == "D" and (program_counter in str_locations) and not stay_in_code:
@@ -1331,10 +1313,10 @@ while program_counter < max(code):
                 f'"{chr(tmp)}"'
                 if 31 < tmp < 127
                 else (
-                    f"('{chr(tmp - 0x80)}') + 0x80" if 31 < (tmp - 0x80) < 127 else hex(tmp)
+                    f"('{chr(tmp - 0x80)}') + {hexstyle}80" if 31 < (tmp - 0x80) < 127 else hex(tmp)
                 )
             )
-            code_output(program_counter, "DEFB " + hex(tmp), list_address, out_tmp)
+            code_output(program_counter, f"DEFB {hexstyle}{tmp:x}", list_address, out_tmp)
             # debug("PC Bump")
             program_counter += 1 #FIXME - tripping PC too much?
     elif identified(program_counter) == "C": # or (stay_in_code and identified(program_counter)!="C"):
@@ -1400,22 +1382,20 @@ while program_counter < max(code):
         elif b.op is b.op.LD:  # and b.operands[0][0] is not b.operands[0][0].REG_DEREF:
             # debug("C2 - 3")
             data_addr = handle_data(b)
-            # print(data_addr)
             if data_addr is None:  # So something like LD A,(BC) or LD A,B
+                tmp=z80.disasm(b)
+                if asmtype()==3:
+                    tmp=tmp.replace("0x","&")
                 code_output(
                     program_counter,
-                    z80.disasm(b),
+                    tmp,
                     list_address,
                     explain.code(z80.disasm(b),commentlevel),
                     add_extra_info(decode_buffer),
                 )
                 program_counter += b.len
             else:
-                #FIXME The C0C8 problem
-                # So now I have a problem. In RODOS 2.19 there an instruction that decodes to "LD HL,string_C0C8"
-                # The problem is 0xC0C8 is actually the terminator for the ROM name (the M+0x80 part of DEFB "RODOS RO", 'M' + 0x80 )
-                # If I manually mark that address as data, I get a perfect compile.
-                tmp = z80.disasm(b)
+                tmp = z80.disasm(b).replace(f'0x{data_addr:04x}',lookup_label(data_addr,1))
                 tmp_data_addr = handle_data(b)
                 tmp_addr = hex(handle_data(b))
                 # mark_handled(tmp_data_addr, 2, "D")
@@ -1430,6 +1410,8 @@ while program_counter < max(code):
                     )  # Convert inline hex to L_xxxx label
                     # print(labelled)
                 else:
+                    if asmtype()==3:
+                        tmp=tmp.replace("0x","&")
                     labelled = tmp
                 str_for_comment = ""
                 if data_addr in labels:
@@ -1446,10 +1428,12 @@ while program_counter < max(code):
                 )
                 program_counter += b.len
         else:
-            # print(b,z80.disasm(b))
+            tmp=z80.disasm(b)
+            if asmtype()==3:
+                tmp=tmp.replace("0x","&")
             code_output(
                 program_counter,
-                z80.disasm(b),
+                tmp,
                 list_address,
                 explain.code(z80.disasm(b),commentlevel),
                 add_extra_info(decode_buffer),
