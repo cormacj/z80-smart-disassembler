@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 #BUG: LD A,(0x0009) isn't parsing out the hex part for labels
-#BUG: validate template to warn on out-of-bounds addresses
 """
 This program is designed to try and disassemble Z80 code and return something as close to the original
 as possible. This means that strings and data need to be identified, and all the code needs to processed
 and decoded.
 
 The difficulties with this are as follows:
-1. In Amstrad CPC land you can't always just go "Ok, heres the entry point, follow the code" because RSXs and
+1. In the Amstrad CPC you can't always just go "Ok, heres the entry point, follow the code" because RSXs and
    ROMs use a selection of jumps identified by the RSX commands. This is also complicated by the Z80 command "JP (IX)"
 2. Some strings look like code, and some code looks like string. This means that sometimes short strings will be missed,
    and sometimes a string gets decoded with a jump to something thats not actually a routine.
@@ -317,6 +316,15 @@ def process_template(filename):
                         datatype=lines[2]
                         label=lines[3]
                         debug(f'Tagging {label}: {hex(begin)}')
+                        # print(f'code_org={hex(code_org)}, begin={hex(begin)},len bin_data={hex(len(bin_data)+code_org)}')
+                        # print(code_org < begin)
+                        # print(begin < (len(bin_data)+code_org))
+                        # print(hex(endaddress))
+                        if not (code_org <= begin < (len(bin_data)+code_org)):
+                            print("\nError: Out of bounds address in template:")
+                            print(f"\t{lines[0]},{lines[1]},{lines[2]},{lines[3]}")
+                            sys.exit(1)
+
                         code[begin][2]=label
                         code[begin][3]=label
                         template_labels[begin]=label
@@ -397,6 +405,14 @@ def parse_arguments():
         action="store",
         default="0x100",
         help="Specify where in RAM the code loads",
+    )
+
+    parser.add_argument(
+        "-e","--end",
+        dest="endaddress",
+        action="store",
+        default="0",
+        help="Stop disassembling before the end of the file. Note: sometimes exported files include extra data depending on the program used to extract them from a disc. Default is full length of binary file.",
     )
 
     parser.add_argument(
@@ -571,7 +587,11 @@ def identified(address):
     """
     Shorthand for code[address][1]
     """
-    return code[address][1]
+    if(address in code):
+        return code[address][1]
+    else:
+        return ""
+
 def type_lookup(datatype):
     match datatype:
         case "S":
@@ -805,7 +825,7 @@ def findstring(memstart, memend):
 
     pattern = re.compile(b"[ -~]{%d,}" % min_length)
 
-    print_progress_bar(0, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
+    print_progress_bar(0, endaddress, prefix='    Progress:', suffix='Complete', length=50)
     for match in pattern.finditer(bin_data):
         start_position, end_position = match.start(), match.end()
         matched_string = (
@@ -853,7 +873,9 @@ def findstring(memstart, memend):
                     # print("String: ",hex(code_org+start),s)
                     str_sizes[code_org + start] = end - start
                     mark_handled(code_org + start, end - start-1, "S")
-    print_progress_bar(len(bin_data), len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
+    print_progress_bar(endaddress, endaddress, prefix='    Progress:', suffix='Complete', length=50)
+
+
 #------============ Main Area ============------
 #
 display_version_info()
@@ -871,28 +893,52 @@ if args.xref == "on":
 else:
     xrefstr = ""
 
+if to_number(args.endaddress)==0:
+    # endaddress=len(bin_data)
+    readsize=-1
+else:
+    # print(hex(code_org))
+    endaddress=to_number(args.endaddress)-code_org
+    readsize=endaddress
+    if (endaddress)<0:
+        print("Error: End address is less than start address")
+        sys.exit(1)
 
 # Load binary file
+print(f"Reading: {readsize} bytes")
 try:
     with open(args.filename, "rb") as f:
-        bin_data = f.read()
+        bin_data = f.read(readsize)
     print(f"Disassembling {args.filename}: {len(bin_data)} bytes\n")
 except:
     print("Error: Could not read file ", args.filename)
     sys.exit(1)
 
+# Recalculate end address
+if to_number(args.endaddress)==0:
+    endaddress=len(bin_data)
+    readsize=-1
+else:
+    # print(hex(code_org))
+    endaddress=to_number(args.endaddress)-code_org
+    readsize=endaddress
+    if (endaddress)<0:
+        print("Error: End address is less than start address")
+        sys.exit(1)
+
+print(f'args.endaddress={args.endaddress} actual={hex(len(bin_data))}  calculated={hex(endaddress)}')
 print_progress_bar(0, len(bin_data), prefix='Loading code:', suffix='Complete', length=50)
 
 # Copy the binary file to the proper memory location and for processing
 loc=0
-while loc < len(bin_data):
-    print_progress_bar(loc, len(bin_data), prefix='Loading code:', suffix='Complete', length=50)
+while loc < endaddress: #len(bin_data):
+    print_progress_bar(loc, endaddress, prefix='Loading code:', suffix='Complete', length=50)
     code[code_org+loc][0]=bin_data[loc] # Binary data
     code[code_org+loc][1]="" # Code Type
     code[code_org+loc][2]="" # Label identification pass 1
     code[code_org+loc][3]="" # Label identification pass 2
     loc += 1
-print_progress_bar(loc, len(bin_data), prefix='Loading code:', suffix='Complete', length=50)
+print_progress_bar(loc, endaddress, prefix='Loading code:', suffix='Complete', length=50)
 print()
 #Add 1 extra line of padding because max(code) causes breaking. Grrr. Grumble, Grumble.
 code[code_org+loc][0]=0
@@ -907,9 +953,9 @@ jump_locations = {}
 
 loc = min(code)
 end_of_code=max(code)
-print_progress_bar(0, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
+print_progress_bar(0, endaddress, prefix='    Progress:', suffix='Complete', length=50)
 while loc <= end_of_code:
-    print_progress_bar(loc-code_org, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
+    print_progress_bar(loc-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
     #Build a decoding buffer
     codesize = min(4, end_of_code-loc)
     for loop in range(0,codesize):
@@ -956,7 +1002,7 @@ while loc <= end_of_code:
 print("Pass 2: Search for strings")
 id_sort = sorted(identified_areas)
 start = 0
-end = len(bin_data)
+end = endaddress
 findstring(start, end)
 
 # dump_code_array("Post pass 2",0xd8dc)
@@ -982,9 +1028,9 @@ findstring(start, end)
 print("Pass 3: Build code structure")
 loc = min(code)
 last = "C"
-print_progress_bar(loc-code_org, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
+print_progress_bar(loc-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
 while loc <= max(code):
-    print_progress_bar(loc-code_org, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
+    print_progress_bar(loc-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
     code[loc][1] = code[loc][1] or last
     last = code[loc][1]
     loc += 1
@@ -1005,11 +1051,11 @@ if args.templatefile is not None:
 # In this pass I'm building the final labels but not outputting code
 # dump_code_array()
 program_counter=min(code)
-print_progress_bar(program_counter-code_org, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
+print_progress_bar(program_counter-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
 
 # dump_code_array()
 while program_counter < max(code):
-    print_progress_bar(program_counter-code_org, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
+    print_progress_bar(program_counter-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
     # Build a decoding buffer
     codesize = min(4, end_of_code - program_counter)
     for loop in range(0,codesize):
@@ -1102,7 +1148,7 @@ while program_counter < max(code):
     else:
         # At this point we fell through everything, so its probably a string. Just increment
         program_counter += 1
-print_progress_bar(program_counter-code_org, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
+print_progress_bar(program_counter-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
 
 
 # -- Pass 5 --
@@ -1128,11 +1174,11 @@ if args.style == "asm":
 else:
     do_write(f"     org {hexstyle}{code_org:x}")
 
-print_progress_bar(0, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
+print_progress_bar(0, endaddress, prefix='    Progress:', suffix='Complete', length=50)
 while program_counter < max(code):
     # if 0xca80 < program_counter <0xca93:
     #     dump_code_array("--->",program_counter)
-    print_progress_bar(program_counter-code_org, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
+    print_progress_bar(program_counter-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
     # Build a decoding buffer
     codesize = min(4, end_of_code - program_counter)
     for loop in range(0,codesize):
@@ -1442,7 +1488,7 @@ while program_counter < max(code):
     else:
         # program_counter += b.len
         program_counter += 1
-print_progress_bar(program_counter-code_org, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
+print_progress_bar(program_counter-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
 print()
 if args.outfile:
     print(args.outfile," created!")
