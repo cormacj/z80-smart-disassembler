@@ -371,35 +371,57 @@ def to_number(n):
 
 def parse_arguments():
     """
+
     Process all the command line parameters
     returns ArgumentParser in args
     """
-
     import argparse
 
     parser = argparse.ArgumentParser(description="A Smart Z80 reverse assembler")
 
-    parser.add_argument(dest="filename", metavar="filename", action="store")
+    required = parser.add_argument_group("Required arguments")
+    recommended = parser.add_argument_group("Recommended arguments, but optional")
+    style = parser.add_argument_group("Formatting options")
+
+    required.add_argument(dest="filename", metavar="filename", action="store",help="A Z80 binary file.")
     # parser.add_argument('-p', '--pat', metavar ='pattern',
     #                     required = True, dest ='patterns',
     #                     action ='append',
     #                     help ='text pattern to search for')
 
-    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose mode")
-    parser.add_argument("-q", dest="quiet", action="store_true", help="quiet mode")
-    parser.add_argument("-o", dest="outfile", action="store", help="output file")
-    parser.add_argument("-t", dest="templatefile", action="store", help="template file")
-    parser.add_argument("-s", dest="stringterminator", action="store", help=f"string terminator value - defaults are {terminator_list} and printable characters+0x80 ")
 
-    parser.add_argument(
+    # parser.add_argument("-v", dest="verbose", action="store_true", help="verbose mode")
+    parser.add_argument("-q", dest="quiet", action="store_true", help="Quiet mode - don't display progress bars.")
+    recommended.add_argument("-o", dest="outfile", action="store", help="Output file. If omitted, then disassembly will go to the screen.")
+
+    style.add_argument(
+        "-t",
+        dest="templatefile",
+        action="store",
+        help="Use a template file. This helps decode strings and allows for fine tuning disassembly. See README.md for more details")
+
+    style.add_argument(
+        "-s", dest="stringterminator",
+        action="append",
+        help=f"string terminator value - defaults are {terminator_list} and printable characters+0x80. You can supply a number, or a single character")
+
+    style.add_argument(
+        "-a","--assembler",
+        action="store",
+        dest="assembler",
+        choices={"z88","z80asm", "maxam"},
+        default="z88",
+        help="Format the code for particular assemblers. The default is z88.",
+    )
+    style.add_argument(
         "--style",
         dest="style",
         action="store",
         choices={"asm", "lst"},
         default="asm",
-        help="asm produces a file that can be assembled. lst is a dump style output",
+        help="asm produces a file that can be assembled. lst is a dump style output. The default is asm style.",
     )
-    parser.add_argument(
+    recommended.add_argument(
         "-l","--load",
         dest="loadaddress",
         action="store",
@@ -407,15 +429,15 @@ def parse_arguments():
         help="Specify where in RAM the code loads",
     )
 
-    parser.add_argument(
+    recommended.add_argument(
         "-e","--end",
         dest="endaddress",
         action="store",
         default="0",
-        help="Stop disassembling before the end of the file. Note: sometimes exported files include extra data depending on the program used to extract them from a disc. Default is full length of binary file.",
+        help="Specify an address to stop disassembling. See README.md for more details.",
     )
 
-    parser.add_argument(
+    style.add_argument(
         "--xref",
         dest="xref",
         action="store",
@@ -423,7 +445,7 @@ def parse_arguments():
         default="on",
         help="Enable or disable cross references for labels",
     )
-    parser.add_argument(
+    style.add_argument(
         "--stayincode",
         dest="stay_in_code",
         action="store_true",
@@ -431,7 +453,7 @@ def parse_arguments():
         default=False,
         help="Don't try to decode data after a RET/JP",
     )
-    parser.add_argument(
+    style.add_argument(
         "--labeltype",
         dest="labeltype",
         action="store",
@@ -439,21 +461,13 @@ def parse_arguments():
         default="1",
         help="1: Uses short name eg D_A123 or C_A345  2: Uses full names, eg data_A123 or code_A123",
     )
-    parser.add_argument(
+    style.add_argument(
         "-c","--commentlevel",
         dest="commentlevel",
         action="store",
         choices={"0","1", "2"},
         default="0",
         help="0: No code explanations 1: Data references only  2: Everything",
-    )
-    parser.add_argument(
-        "-a","--assembler",
-        dest="assembler",
-        action="store",
-        choices={"z88","z80asm", "maxam"},
-        default="z88",
-        help="Format the code for particular assemblers",
     )
     parser.add_argument("-d", "--debug", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -491,8 +505,18 @@ def validate_arguments(argslist):
             sys.exit(1)
 
     if args.stringterminator is not None:
-        terminator_list.append(to_number(args.stringterminator))
+        # print(f"args={args.stringterminator}, terminator={terminator_list}")
+        for terms in args.stringterminator:
+            # print(terms[0:2])
+            # If it's not a hex number or an actual number, then get the ascii of
+            if (not terms.isdigit()) and terms[0:2]!="0x":
+                if len(terms)>1:
+                    print("Error: Terminators can only be a single character, or a number, eg -s X -s 81 -s 0xff")
+                    sys.exit(1)
+                terms=ord(terms)
+            terminator_list.append(to_number(terms))
         # print(terminator_list)
+        # print(f"args={args.stringterminator}, terminator={terminator_list}")
     commentlevel=to_number(args.commentlevel)
     stay_in_code=args.stay_in_code
     #Now ensure that the template file can be opened
