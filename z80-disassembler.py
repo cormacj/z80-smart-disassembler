@@ -193,9 +193,9 @@ def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, lengt
         filled_length = int(length * iteration // total)
         bar = fill * filled_length + '-' * (length - filled_length)
         print(f'\r{prefix} |{bar}| {percent}% {suffix}', end=print_end)
-        # Print New Line on Complete
-        if iteration == total:
-            print()
+        # # Print New Line on Complete
+        # if iteration == total:
+        #     print()
 
 
 def do_write(asm_string=""):
@@ -337,7 +337,7 @@ def process_template(filename):
                             case "w":
                                 mark_handled(addr,2,"D")
                             case "c":
-                                print("Code:",hex(begin),hex(end))
+                                # print("Code:",hex(begin),hex(end))
                                 for loop in range(begin,end):
                                     mark_handled(loop,1,"C")
                                 mark_handled(addr,3,"C")
@@ -825,7 +825,7 @@ def findstring(memstart, memend):
 
     pattern = re.compile(b"[ -~]{%d,}" % min_length)
 
-    print_progress_bar(0, endaddress, prefix='    Progress:', suffix='Complete', length=50)
+    print_progress_bar(0, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
     for match in pattern.finditer(bin_data):
         start_position, end_position = match.start(), match.end()
         matched_string = (
@@ -838,6 +838,7 @@ def findstring(memstart, memend):
         print_progress_bar(start_position, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
         strings_with_locations.append((found_string, start_position, end_position))
 
+    print_progress_bar(len(bin_data), len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
     for s, start, end in strings_with_locations:
         if re.search(r"[A-Za-z]{3,}", s):
             for delims in terminator_list:
@@ -873,7 +874,6 @@ def findstring(memstart, memend):
                     # print("String: ",hex(code_org+start),s)
                     str_sizes[code_org + start] = end - start
                     mark_handled(code_org + start, end - start-1, "S")
-    print_progress_bar(endaddress, endaddress, prefix='    Progress:', suffix='Complete', length=50)
 
 
 #------============ Main Area ============------
@@ -926,7 +926,7 @@ else:
         print("Error: End address is less than start address")
         sys.exit(1)
 
-print(f'args.endaddress={args.endaddress} actual={hex(len(bin_data))}  calculated={hex(endaddress)}')
+# print(f'args.endaddress={args.endaddress} actual={hex(len(bin_data))}  calculated={hex(endaddress)}')
 print_progress_bar(0, len(bin_data), prefix='Loading code:', suffix='Complete', length=50)
 
 # Copy the binary file to the proper memory location and for processing
@@ -946,16 +946,16 @@ code[code_org+loc][1]=""
 code[code_org+loc][2]=""
 code[code_org+loc][3]=""
 
-print("Pass 1: Identify addressable areas")
+print("\nPass 1: Identify addressable areas")
 decode_buffer = bytearray(6)
 data_locations = {}
 jump_locations = {}
 
 loc = min(code)
 end_of_code=max(code)
-print_progress_bar(0, endaddress, prefix='    Progress:', suffix='Complete', length=50)
+# print_progress_bar(0, endaddress, prefix='    Progress:', suffix='Complete', length=50)
 while loc <= end_of_code:
-    print_progress_bar(loc-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
+    print_progress_bar(loc, end_of_code, prefix='    Progress:', suffix='Complete', length=50)
     #Build a decoding buffer
     codesize = min(4, end_of_code-loc)
     for loop in range(0,codesize):
@@ -995,11 +995,14 @@ while loc <= end_of_code:
         elif b.op is b.op.RET:
             mark_handled(loc, 1, "C")
     loc += b.len
+    # print(loc,end_of_code)
+# if loc>=end_of_code:
+print_progress_bar(endaddress, endaddress, prefix='    Progress:', suffix='Complete', length=50)
 
 
 # dump_code_array("Pre pass 2",0xd8dc)
 #//TODO: Reimpliment
-print("Pass 2: Search for strings")
+print("\nPass 2: Search for strings")
 id_sort = sorted(identified_areas)
 start = 0
 end = endaddress
@@ -1025,7 +1028,7 @@ findstring(start, end)
 #     findstring(start, end)
 
 
-print("Pass 3: Build code structure")
+print("\nPass 3: Build code structure")
 loc = min(code)
 last = "C"
 print_progress_bar(loc-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
@@ -1037,7 +1040,7 @@ while loc <= max(code):
 
 # dump_code_array()
 
-print("Pass 4: Validate labels")
+print("\nPass 4: Validate labels")
 code_snapshot = bytearray(8)
 loc = 0
 
@@ -1159,7 +1162,7 @@ for loop in range(min(code),max(code)):
         code[loop][1]="D"
 
 
-print("Pass 5: Produce final listing")
+print("\nPass 5: Produce final listing")
 #Move temp labels into the main labels for output
 #Finalise the labelling
 
@@ -1174,11 +1177,11 @@ if args.style == "asm":
 else:
     do_write(f"     org {hexstyle}{code_org:x}")
 
-print_progress_bar(0, endaddress, prefix='    Progress:', suffix='Complete', length=50)
+# print_progress_bar(0, endaddress, prefix='    Progress:', suffix='Complete', length=50)
 while program_counter < max(code):
     # if 0xca80 < program_counter <0xca93:
     #     dump_code_array("--->",program_counter)
-    print_progress_bar(program_counter-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
+    print_progress_bar(program_counter, max(code), prefix='    Progress:', suffix='Complete', length=50)
     # Build a decoding buffer
     codesize = min(4, end_of_code - program_counter)
     for loop in range(0,codesize):
@@ -1488,7 +1491,7 @@ while program_counter < max(code):
     else:
         # program_counter += b.len
         program_counter += 1
-print_progress_bar(program_counter-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
+print_progress_bar(max(code), max(code),prefix='    Progress:', suffix='Complete', length=50)
 print()
 if args.outfile:
     print(args.outfile," created!")
