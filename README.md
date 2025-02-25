@@ -67,25 +67,26 @@ A template file is a standard text file. The format for the file is as follows:
 
 Extracting binary files from a .dsk image means that a 18 byte binary file might be 1024 bytes when it's extracted.
 
-For, example, if you have a 18 byte .COM file then the --end value for this would -e 0x118 because the usual load address is 0x100.
+For, example, if you have a 18 byte .COM file then the --end value for this would --end 0x118 because the usual load address is 0x100.
 
 For example:
 `./z80-disassembler.py --load 0x100 --end 0x118 EXAMPLE.COM`
 
 # Helper Scripts
 
-* generate_string_locations.sh
+* generate_string_locations.sh (linux only)
 
-  Usage: `./generate_string_locations.sh` <filename> <memory load location>
+Description:
+The disassembler will try to automatically identify strings in the code, but it does sometimes fail because it decoded a string as a JP or LD instruction, or treated code as a string. This helper script generally identifies strings more successfully and produces output that can be added as a template file while disassembling.
+
+  Usage: `./generate_string_locations.sh <filename> <memory load location>`
 
   Example: `./generate_string_locations.sh CPMFILE.COM 0x100 >cpmfile_template.txt`
 
-  Description:
-  The disassembler will try to identify strings in the code, it does sometimes cause false generation of jump or data locations because it decoded a string as a JP or LD instruction.
 
   This script will use the templating function of the disassembler to mark string areas in advance. Once these are marked, the disassembler will ignore those memory locations, assuming that someone knows better than it does.
 
-  This generator can create some false positives, so I'd advise looking over the generated template and commenting out (or removing) anything that doesn't look like a string.
+  This generator can create some false positives, so I recommend reviewing the generated template and commenting out (or removing) anything that doesn't look like a string.
 
   The output is in this format:
 
