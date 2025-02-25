@@ -8,27 +8,37 @@ I wanted something similar for Z80 code and this project aims to do this.
 
 # Usage
 ```
-usage: z80-disassembler.py [-h] [-v] [-o OUTFILE] [-t TEMPLATEFILE] [--style {asm,lst}] [-l LOADADDRESS] [--xref {off,on}] [--labeltype {2,1}] filename
+usage: z80-disassembler.py [-h] [-q] [-o OUTFILE] [-t TEMPLATEFILE] [-s STRINGTERMINATOR] [-a {z88,maxam,z80asm}] [--style {asm,lst}] [-l LOADADDRESS] [-e ENDADDRESS] [--xref {on,off}]
+                           [--stayincode] [--labeltype {2,1}] [-c {2,0,1}]
+                           filename
 
 A Smart Z80 reverse assembler
 
-positional arguments:
-  filename
+options:
+  -h, --help            show this help message and exit
+  -q                    Quiet mode - don't display progress bars.
 
-  options:
-    -h, --help            show this help message and exit
-    -v                    verbose mode
-    -q                    quiet mode
-    -o OUTFILE            output file
-    -t TEMPLATEFILE       template file
-    -s STRINGTERMINATOR   string terminator value - defaults are [0, 13, 141] and printable characters+0x80
-    --style {lst,asm}     asm produces a file that can be assembled. lst is a dump style output
-    -l LOADADDRESS, --load LOADADDRESS
-                          Specify where in RAM the code loads
-    --xref {off,on}       Enable or disable cross references for labels
-    --labeltype {2,1}     1: Uses short name eg D_A123 or C_A345 2: Uses full names, eg data_A123 or code_A123
-    -c {0,2,1}, --commentlevel {0,2,1}
-                          0: No code explanations 1: Data references only 2: Everything
+Required arguments:
+  filename              A Z80 binary file.
+
+Recommended arguments, but optional:
+  -o OUTFILE            Output file. If omitted, then disassembly will go to the screen.
+  -l LOADADDRESS, --load LOADADDRESS
+                        Specify where in RAM the code loads
+  -e ENDADDRESS, --end ENDADDRESS
+                        Specify an address to stop disassembling. See README.md for more details.
+
+Formatting options:
+  -t TEMPLATEFILE       Use a template file. This helps decode strings and allows for fine tuning disassembly. See README.md for more details
+  -s STRINGTERMINATOR   string terminator value - defaults are [0, 13, 141] and printable characters+0x80. You can supply a number, or a single character
+  -a {z88,maxam,z80asm}, --assembler {z88,maxam,z80asm}
+                        Format the code for particular assemblers. The default is z88.
+  --style {asm,lst}     asm produces a file that can be assembled. lst is a dump style output. The default is asm style.
+  --xref {on,off}       Enable or disable cross references for labels
+  --stayincode          Don't try to decode data after a RET/JP
+  --labeltype {2,1}     1: Uses short name eg D_A123 or C_A345 2: Uses full names, eg data_A123 or code_A123
+  -c {2,0,1}, --commentlevel {2,0,1}
+                        0: No code explanations 1: Data references only 2: Everything
 ```
 # Templates
 
@@ -52,6 +62,12 @@ A template file is a standard text file. The format for the file is as follows:
   `0xc006,(0xc004),c,JUMP_TABLE`
 
   This is then treated in the disassember as mark locations `0xc006` to `0xc123` as code with the label for this area being `JUMP_TABLE`
+
+# -e ENDADDRESS
+
+Extracting binary files from a .dsk image means that a 18 byte binary file be 1024 bytes when it's extracted.
+
+For, example, if you have a 18 byte .COM file then the -e value for this would -e 0x118 because the usual load address is 0x100.
 
 # Helper Scripts
 
