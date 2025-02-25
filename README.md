@@ -74,9 +74,9 @@ For example:
 
 # Helper Scripts
 
-* generate_string_locations.sh (linux only)
+* generate_string_locations.sh **(linux only)**
 
-Description:
+**Description:**
 The disassembler will try to automatically identify strings in the code, but it does sometimes fail because it decoded a string as a JP or LD instruction, or treated code as a string. This helper script generally identifies strings more successfully and produces output that can be added as a template file while disassembling.
 
   Usage: `./generate_string_locations.sh <filename> <memory load location>`
@@ -130,7 +130,50 @@ Lines of code: 10181
 Code Labels: 735
 Data Labels: 54
 ```
+# Example Results
 
+I wrote a simple "hello world" file and compiled it on an Amstrad.
+
+```
+org &100
+
+bdos equ &0005 ; BDOS entry point
+
+start:  ld c,9 ; BDOS function output string
+  ld de,msg ; address of msg
+  call bdos
+  ret
+
+msg: db 'Hello, world!$'
+
+end
+```
+
+I then copied the HELLO.COM file back to my PC and disassembled it. This is the resulting output.
+
+My template file is:
+```
+0x100,0x108,c,Hello
+;----
+;db "Hello, world!"
+0x109,0x117,s,S_109
+;----
+```
+
+Now I disassembled HELLO.COM using `./z80-disassembler.py -l 0x100 -e 0x118 -t h.txt hello2.asm` and this was the result:
+
+```
+org &100
+;--------------------------------------
+Hello:                         ;
+    LD C,9                     ;&100:   0e 09  ".."
+    LD DE,S_109                ;&102:   11 09 01  "..."       - References: "Hello, world!$"
+    CALL &5                    ;&105:   cd 05 00  "..."
+    RET                        ;&108:   c9  "."
+;--------------------------------------
+S_109:                         ;
+    DEFB "Hello, world!$", &00  ;&109:                       &109 to &11a
+```
 # Known Issues
 
 * Generated code causes z80asm to crash.
