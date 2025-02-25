@@ -79,9 +79,9 @@ For example:
 **Description:**
 The disassembler will try to automatically identify strings in the code, but it does sometimes fail because it decoded a string as a JP or LD instruction, or treated code as a string. This helper script generally identifies strings more successfully and produces output that can be added as a template file while disassembling.
 
-  Usage: `./generate_string_locations.sh <filename> <memory load location>`
+**Usage:** `./generate_string_locations.sh <filename> <memory load location>`
 
-  Example: `./generate_string_locations.sh CPMFILE.COM 0x100 >cpmfile_template.txt`
+**Example:** `./generate_string_locations.sh CPMFILE.COM 0x100 >cpmfile_template.txt`
 
 
   This script will use the templating function of the disassembler to mark string areas in advance. Once these are marked, the disassembler will ignore those memory locations, assuming that someone knows better than it does.
@@ -102,7 +102,6 @@ The disassembler will try to automatically identify strings in the code, but it 
   Next is the template line, using the format `start address, end address,s for string,label` so the disassembler marks everything between `0x16a` and `0x178` as a string and labels this area as `S_16a`
 
 # Example usage
-
 
 ```
 $ ./z80-disassembler.py RODOS219.ROM -l 0xc000 --style lst --xref on -o rodos-listing.lst
@@ -149,7 +148,13 @@ msg: db 'Hello, world!$'
 end
 ```
 
-I then copied the HELLO.COM file back to my PC and disassembled it. This is the resulting output.
+I then copied the HELLO.COM file back to my PC.
+
+First I ran the generate_string_locations script using `./generate_string_locations.sh HELLO.COM 0x100`
+
+The .COM file on the Amstrad 18 bytes long, but when copied off the .dsk image, it was 1024 bytes long. The generate strings also added a lot of extra details that aren't needed, so I only used the first line.
+
+I also ensured the the disassembler treated the rest as code by enforcing in the template.
 
 My template file is:
 ```
@@ -160,7 +165,7 @@ My template file is:
 ;----
 ```
 
-Now I disassembled HELLO.COM using `./z80-disassembler.py -l 0x100 -e 0x118 -t h.txt hello2.asm` and this was the result:
+Now I disassembled HELLO.COM using `./z80-disassembler.py -l 0x100 -e 0x118 -t h.txt -a maxam hello2.asm` and this was the result:
 
 ```
 org &100
@@ -177,11 +182,13 @@ S_109:                         ;
 # Known Issues
 
 * Generated code causes z80asm to crash.
+* The disassembler will generate references to labels that don't exist
 * String detection fails oddly towards the end of a ROM and maybe elsewhere, so use the `generate_string_locations.sh` helper script to make a template if this happens.
 
 # ToDo
 
 [ ] - Error handling, everywhere
+[ ] - Complete template implimentation (b,w handling)
 
 # Dependencies
 

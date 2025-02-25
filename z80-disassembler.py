@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 #BUG: LD A,(0x0009) isn't parsing out the hex part for labels
+#BUG: disassemling still produces references to instructions that aren't there.
 """
 This program is designed to try and disassemble Z80 code and return something as close to the original
 as possible. This means that strings and data need to be identified, and all the code needs to processed
@@ -46,8 +47,8 @@ identified_areas = {}
 labels = defaultdict(set)
 template_labels = defaultdict(set)
 terminator_list=[0,13,0x8d]
-code=defaultdict(UserDict)
 commentlevel=0
+code=defaultdict(UserDict)
 """
 code array structure is:
 code[address][0] = [bin_code]
@@ -106,7 +107,7 @@ def is_alphanumeric(byte):
 def is_terminator(byte):
     if byte in terminator_list:
         return True
-    elif (31 + 128 <= byte <= 126 + 128):
+    elif (31 + 128 <= byte <= 126 + 128): #Anything printable+0x80
         return True
     else:
         return False
@@ -240,7 +241,6 @@ def check_for_pointer(addr):
 
     @params:
         addr    - Required: Address in the binary data array for a pointer address
-
     """
 
     ptr=Pointer
@@ -929,7 +929,8 @@ else:
         sys.exit(1)
 
 # Load binary file
-print(f"Reading: {readsize} bytes")
+debug(f"Reading: {readsize} bytes")
+
 try:
     with open(args.filename, "rb") as f:
         bin_data = f.read(readsize)
