@@ -52,9 +52,9 @@ Formatting options:
 
 The defaults are [0, 13, 0x8d] and any printable characters+0x80.
 
-Repeat this as many times as needed, eg `-s 76 -s ";"`
+Repeat this as many times as needed, eg `-s 76 -s 0x81 -s ";"`
 
-You can supply a number, or a single character, eg `-s 0 or -s "Q"`
+You can supply a number, or a single character, eg `-s 0` or `-s "Q"`
 
 ---
 
