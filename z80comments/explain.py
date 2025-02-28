@@ -31,7 +31,7 @@ opcode_comments = {
 "JP(2)": "Conditionally jump to $2 based on the flag in $1",
 "JR": "Relative jump so it can only jump between 128 bytes back/ahead to $1",
 "JR(2)": "Conditional relative jump based on $1",
-"LD": "Load $1 with the value from $2",
+"LD": "Load $1 with $2",
 "LDD": "Transfers a byte of data from the memory location pointed to by HL to the memory location pointed to by DE. Then HL, DE, and BC are decremented. p/v is reset if BC becomes zero and set otherwise.",
 "LDDR": "Transfers a byte of data from the memory location pointed to by HL to the memory location pointed to by DE. Then HL, DE, and BC are decremented. If BC is not zero, this operation is repeated. Interrupts can trigger while this instruction is processing.",
 "LDI": "Transfers a byte of data from the memory location pointed to by HL to the memory location pointed to by DE. Then HL and DE are incremented and BC is decremented. p/v is reset if BC becomes zero and set otherwise. ",

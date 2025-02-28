@@ -7,9 +7,13 @@ This was inspired by Sourcer from V Communications (see https://corexor.wordpres
 I wanted something similar for Z80 code and this project aims to do this.
 
 # Usage
+
 ```
-usage: z80-disassembler.py [-h] [-q] [-o OUTFILE] [-t TEMPLATEFILE] [-s STRINGTERMINATOR] [-a {z88,maxam,z80asm}] [--style {asm,lst}] [-l LOADADDRESS] [-e ENDADDRESS] [--xref {on,off}]
-                           [--stayincode] [--labeltype {2,1}] [-c {2,0,1}]
+z80-disassembler.py - v0.75 - A Smart Z80 reverse assembler
+Visit https://github.com/cormacj/z80-smart-disassembler for updates and to report issues
+
+usage: z80-disassembler.py [-h] [-q] [-o OUTFILE] [-t TEMPLATEFILE] [-s STRINGTERMINATOR] [-a {pyradev,z80asm,maxam,z88}] [--style {lst,asm}] [-l LOADADDRESS] [-e ENDADDRESS]
+                           [--xref {off,on}] [--stayincode] [--labeltype {2,1}] [-c {2,1,0}] [--explain {2,1,0}]
                            filename
 
 A Smart Z80 reverse assembler
@@ -30,16 +34,147 @@ Recommended arguments, but optional:
 
 Formatting options:
   -t TEMPLATEFILE       Use a template file. This helps decode strings and allows for fine tuning disassembly. See README.md for more details
-  -s STRINGTERMINATOR   string terminator value - defaults are [0, 13, 141] and printable characters+0x80. You can supply a number, or a single character
-  -a {z88,maxam,z80asm}, --assembler {z88,maxam,z80asm}
+  -s STRINGTERMINATOR   string terminator value - defaults are [0, 13, 141] and printable characters+0x80. You can supply a number, or a single character. You can repeat this as many times as needed.
+  -a {pyradev,z80asm,maxam,z88}, --assembler {pyradev,z80asm,maxam,z88}
                         Format the code for particular assemblers. The default is z88.
-  --style {asm,lst}     asm produces a file that can be assembled. lst is a dump style output. The default is asm style.
-  --xref {on,off}       Enable or disable cross references for labels
+  --style {lst,asm}     asm produces a file that can be assembled. lst is a dump style output. The default is asm style.
+  --xref {off,on}       Enable or disable cross references for labels
   --stayincode          Don't try to decode data after a RET/JP
   --labeltype {2,1}     1: Uses short name eg D_A123 or C_A345 2: Uses full names, eg data_A123 or code_A123
-  -c {2,0,1}, --commentlevel {2,0,1}
-                        0: No code explanations 1: Data references only 2: Everything
+  -c {2,1,0}, --comments {2,1,0}
+                        0: No comments 1: Address 2: (Default) Address+hex and ascii dump
+  --explain {2,1,0}     0: (Default) No code explanations 1: Data references only 2: Everything
 ```
+
+# Decoding options
+
+`-o OUTFILE`
+
+This writes the disassembly to OUTFILE. If this is omitted, then disassembly will go to the screen.
+
+---
+
+`-l LOADADDRESS`, or `--load LOADADDRESS`
+
+Specify where in RAM the code loads. If a program is written to load at address 0x100 then use `-l 0x100` so that calls and other instructions with addresses will be decoded properly.
+
+---
+
+`--end ENDADDRESS`
+
+Specify an address to stop disassembling. See README.md for more details.
+
+Extracting binary files from a .dsk image means that a 18 byte binary file might be 1024 bytes when it's extracted.
+
+For, example, if you have a 18 byte .COM file then the --end value for this would --end 0x118 because the usual load address is 0x100.
+
+For example:
+`./z80-disassembler.py --load 0x100 --end 0x118 EXAMPLE.COM`
+
+# Formatting options
+
+`-s STRINGTERMINATOR string terminator value`
+
+The defaults are [0, 13, 0x8d] and any printable characters+0x80.
+
+Repeat this as many times as needed, eg `-s 76 -s 0x81 -s ";"`
+
+You can supply a number, or a single character, eg `-s 0` or `-s "Q"`
+
+---
+
+`-a {pyradev,z80asm,maxam,z88}`
+
+This applies particular formats the code for particular assemblers. The default is z88.
+
+Pyradev requires hex addresses in the format `12cdH`
+
+Maxam uses hex addresses in the format `&12cd`
+
+Both z80asm and z88 are equivalent. The hex number style is `0x12cd`
+
+---
+
+`--style {lst,asm}`
+The default is asm style.
+
+asm produces a file that can be assembled:
+```
+C_0108:                        ;          XREF: 0x11C
+LD A,(IX+0)
+```
+lst is a dump style output:
+```
+                            C_0108:                        ; XREF: 0x11C
+0x108:   dd 7e 00  ".~."        LD A,(IX+0)                ;
+```
+---
+
+`--xref {off,on}`
+This enables or disable cross references for labels. This adds a XREF comment to labels with the addresses that calls this label.
+
+---
+
+`--stayincode`
+Don't try to decode data after a RET/JP. Sometimes the disassember will assume that data after a RET or a JP instruction is data, but it's actually code. This forces the disassembler to continue to treat the next bytes as code, unless it's overridden by a template instruction.
+
+---
+
+`--labeltype {1,2}`
+This changes the format of generated labels. The default method is short labels.
+
+1: Uses short names eg D_A123 or C_A345
+
+2: Uses full names, eg data_A123 or code_A123
+
+---
+
+`-c {0,1,2}, --comments {0,1,2}`
+
+This changes how generated comments are displayed.
+
+0: No comments
+```
+LD A,(IX+0)
+CP 0x1f
+```
+
+1: Address
+```
+LD A,(IX+0)                ;0x108:
+CP 0x1f                    ;0x10b:
+```
+
+2: (Default) Address+hex and ascii dump
+
+This is most useful because it displays an ASCII dump of the instructions, so it's easier to tell if a string accidentally was decoded as code.
+```
+LD A,(IX+0)                ;0x108:   dd 7e 00  ".~."
+CP 0x1f                    ;0x10b:   fe 1f  ".."
+```
+
+---
+
+`--explain {0,1,2}`
+
+0: (Default) No code explanations
+```
+LD A,0x2e                  ;0x11f:   3e 2e  ">."
+CALL 0xbb5a                ;0x121:   cd 5a bb  ".Z."
+```
+
+1: Data references only
+```
+LD A,0x2e                  ;0x11f:   3e 2e  ">." Load A with 0x2e
+CALL 0xbb5a                ;0x121:   cd 5a bb  ".Z."
+```
+
+2: Everything
+```
+LD A,0x2e                  ;0x11f:   3e 2e  ">." Load A with 0x2e
+CALL 0xbb5a                ;0x121:   cd 5a bb  ".Z." The current PC value plus three is pushed onto the stack, then PC is loaded with 0xbb5a.
+```
+
 # Templates
 
 A template file is a standard text file. The format for the file is as follows:
@@ -63,14 +198,6 @@ A template file is a standard text file. The format for the file is as follows:
 
   This is then treated in the disassember as mark locations `0xc006` to `0xc123` as code with the label for this area being `JUMP_TABLE`
 
-# --end ENDADDRESS
-
-Extracting binary files from a .dsk image means that a 18 byte binary file might be 1024 bytes when it's extracted.
-
-For, example, if you have a 18 byte .COM file then the --end value for this would --end 0x118 because the usual load address is 0x100.
-
-For example:
-`./z80-disassembler.py --load 0x100 --end 0x118 EXAMPLE.COM`
 
 # Helper Scripts
 
@@ -181,13 +308,14 @@ S_109:                         ;
 ```
 # Known Issues
 
-* Generated code causes z80asm to crash.
+* Generated code causes z80asm to crash. This appears to be a z80asm bug relating to LD A,(IX). Most assemblers treat it at LD A,(IX+0) but that crashes z80asm. Changing this to LD A,(IX+0) fixes that.
 * The disassembler will generate references to labels that don't exist
 * String detection fails oddly towards the end of a ROM and maybe elsewhere, so use the `generate_string_locations.sh` helper script to make a template if this happens.
 
 # ToDo
 
 [ ] - Error handling, everywhere
+
 [ ] - Complete template implimentation (b,w handling)
 
 # Dependencies
