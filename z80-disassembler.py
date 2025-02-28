@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 #BUG: LD A,(0x0009) isn't parsing out the hex part for labels
 #BUG: disassemling still produces references to instructions that aren't there.
+#BUG: -c 0 produces DEFB 0x1 0x1 rather than DEFB 0x1
 """
 This program is designed to try and disassemble Z80 code and return something as close to the original
 as possible. This means that strings and data need to be identified, and all the code needs to processed
@@ -25,6 +26,7 @@ The difficulties with this are as follows:
 import csv
 import sys
 import re
+import os
 from collections import defaultdict
 from collections import UserDict
 from typing import NamedTuple
@@ -46,8 +48,9 @@ min_length = 3
 identified_areas = {}
 labels = defaultdict(set)
 template_labels = defaultdict(set)
-terminator_list=[0,13,0x8d]
-commentlevel=0
+terminator_list=[0,13,0x8d] # Null, CR and CR+0x80, Ascii + 0x80 is assumed
+commentlevel=2
+explainlevel=0
 code=defaultdict(UserDict)
 """
 code array structure is:
@@ -113,8 +116,10 @@ def is_terminator(byte):
         return False
 
 def decode_terminator(byte):
-    if asmtype()==3:
+    if asmtype()==3: # Maxam
         hextype="&"
+    elif asmtype()==4: # Pyradev
+        hextype="#"
     else:
         hextype="0x"
     if byte>0x9f: #Asc 31+0x80
@@ -136,6 +141,7 @@ def asmtype():
     1=z88
     2=z80asm
     3=maxam
+    4=pyradev
     """
     match args.assembler:
         case "z88":
@@ -144,16 +150,28 @@ def asmtype():
             return 2
         case "maxam":
             return 3
+        case "pyradev":
+            return 4
         case _:
             print("Invalid assembler type in asmtype()")
             sys.exit(1)
 
 
 def inc_program_counter(pc,inc):
+    """
+    It's a 16 bit system. You can't go past 0xffff
+    """
     if pc+inc<=0xffff:
         return pc+inc
     else:
         return
+
+def process_hextype(hexaddr):
+    if asmtype()==3: # Maxam
+        return hexaddr.replace("0x","&")
+    elif asmtype()==4: # Pyradev
+        return hexaddr.replace("0x","#")
+    return hexaddr
 
 def build_strings_from_binary_data(binary_data):
     strings = []
@@ -226,9 +244,28 @@ def display_version_info():
     Note: This also means that I could allow custom headers later.
     """
     print()
-    print(f'{sys.argv[0]} v{myversion} - A Smart Z80 reverse assembler')
+    print(f'{os.path.basename(sys.argv[0])} - v{myversion} - A Smart Z80 reverse assembler')
+    print(f'Visit https://github.com/cormacj/z80-smart-disassembler for updates and to report issues' )
     print()
 
+def output_version_info():
+    """
+    Put the version string to the file.
+    Note: This also means that I could allow custom headers later.
+    """
+    tmp=""
+    for userargs in sys.argv:
+        # print(f'l={l} argv={sys.argv[0]}')
+        if userargs==sys.argv[0]:
+            tmp=tmp+os.path.basename(sys.argv[0])+" "
+        else:
+            tmp=tmp+userargs+" "
+
+    do_write(";-----------------------------------")
+    do_write(f'; Produced using: {os.path.basename(sys.argv[0])} v{myversion} - A Smart Z80 reverse assembler')
+    do_write(f'; Visit https://github.com/cormacj/z80-smart-disassembler for updates and to report issues' )
+    do_write(f';\n; Command line used: {tmp}')
+    do_write(";-----------------------------------\n")
 
 def check_for_pointer(addr):
     """
@@ -403,13 +440,13 @@ def parse_arguments():
     style.add_argument(
         "-s", dest="stringterminator",
         action="append",
-        help=f"string terminator value - defaults are {terminator_list} and printable characters+0x80. You can supply a number, or a single character")
+        help=f"string terminator value - defaults are {terminator_list} and printable characters+0x80. You can supply a number, or a single character. You can repeat this as many times as needed.")
 
     style.add_argument(
         "-a","--assembler",
         action="store",
         dest="assembler",
-        choices={"z88","z80asm", "maxam"},
+        choices={"z88","z80asm", "maxam","pyradev"},
         default="z88",
         help="Format the code for particular assemblers. The default is z88.",
     )
@@ -421,6 +458,7 @@ def parse_arguments():
         default="asm",
         help="asm produces a file that can be assembled. lst is a dump style output. The default is asm style.",
     )
+
     recommended.add_argument(
         "-l","--load",
         dest="loadaddress",
@@ -459,15 +497,24 @@ def parse_arguments():
         action="store",
         choices={"1", "2"},
         default="1",
-        help="1: Uses short name eg D_A123 or C_A345  2: Uses full names, eg data_A123 or code_A123",
+        help="1: Uses short label names eg D_A123 or C_A345  2: Uses descriptive label names, eg data_A123 or code_A123",
     )
+
     style.add_argument(
-        "-c","--commentlevel",
+        "-c","--comments",
         dest="commentlevel",
         action="store",
         choices={"0","1", "2"},
+        default="2",
+        help="0: No comments 1: Address  2: (Default) Address+hex and ascii dump",
+    )
+    style.add_argument(
+        "--explain",
+        dest="explainlevel",
+        action="store",
+        choices={"0","1", "2"},
         default="0",
-        help="0: No code explanations 1: Data references only  2: Everything",
+        help="0: (Default) No code explanations 1: Data references only  2: Everything",
     )
     parser.add_argument("-d", "--debug", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -482,10 +529,15 @@ def validate_arguments(argslist):
     global asm_file
     global stay_in_code
     global hexstyle
+    global commentlevel
+    global explainlevel
+
     # print(argslist)
     # Ensure that supplied arguments are valid
     if asmtype()==3:
         hexstyle="&"
+    elif asmtype()==4:
+        hexstyle="#"
     else:
         hexstyle="0x"
 
@@ -518,6 +570,7 @@ def validate_arguments(argslist):
         # print(terminator_list)
         # print(f"args={args.stringterminator}, terminator={terminator_list}")
     commentlevel=to_number(args.commentlevel)
+    explainlevel=to_number(args.explainlevel)
     stay_in_code=args.stay_in_code
     #Now ensure that the template file can be opened
     try:
@@ -552,9 +605,21 @@ def code_output(address, code, display_address, comment="", added_details=""):
         added_details   - Optional: Currently used for text+hex dump
     """
     # print_label(address)
-    addr = f"{hexstyle}{address:x}: " if display_address else ""
+    if asmtype() in (3,4):
+        colon=""
+    else:
+        colon=":"
+    addr = f"{hexstyle}{address:x}{colon} " if display_address else ""
+    match commentlevel:
+        case 0:
+            output=f"    {code}"
+        case 1:
+            output=f"    {code:25}  ;{addr}"
+        case 2:
+            output=f"    {code:25}  ;{addr} {added_details}"
+
     if args.style == "asm":
-        do_write(f"    {code:25}  ;{addr} {added_details:20} {comment}")
+        do_write(f"{output} {comment}")
     else:
         do_write(f"{addr} {added_details:20}    {code:25}  ; {comment}")
 
@@ -1121,6 +1186,8 @@ while program_counter < max(code):
     elif identified(program_counter) == "C":
         b = z80.decode(decode_buffer, 0)
         conds = z80.disasm(b).split(",")[0] + ","
+
+        # The next sections are tweaks to reprocess certain opcodes, usually for address and number changes
         if b.op in (b.op.JR, b.op.DJNZ):
             jump_addr = handle_jump(b, program_counter)
             this_opcode = b.op.name
@@ -1191,6 +1258,8 @@ print("\nPass 5: Produce final listing")
 #Move temp labels into the main labels for output
 #Finalise the labelling
 
+output_version_info()
+
 for loop in range(min(code),max(code)):
     code[loop][2]=code[loop][3]
     if code[loop][1]=="S" and code[loop][0]<32 and not is_terminator(code[loop][0]):
@@ -1198,9 +1267,9 @@ for loop in range(min(code),max(code)):
 
 program_counter=min(code)
 if args.style == "asm":
-    do_write(f"org {hexstyle}{code_org:x}")
+    do_write(f"    org {hexstyle}{code_org:x}\n")
 else:
-    do_write(f"     org {hexstyle}{code_org:x}")
+    do_write(f"     org {hexstyle}{code_org:x}\n")
 
 # print_progress_bar(0, endaddress, prefix='    Progress:', suffix='Complete', length=50)
 while program_counter < max(code):
@@ -1269,8 +1338,28 @@ while program_counter < max(code):
             a=str_locations[program_counter]
             l=len(a)-2 #-2 because its quoted
             b=a[0]+a[1:l+1].replace('"', '",34,"').replace("\\", f'", {hexstyle}5c, "')
-            # print("---?B ",b)
+            # print(a[1:len(a)-1])
+
+            # Now, we check strings for ending with breaking terminators, eg quotes or slashes that would be treated as escaping characters.
+            c=a[1:len(a)-1]
+            # print(f"before={a} after={c}")
+            d=""
+            for strtmp in range(0,len(c)):
+                if strtmp==len(c)-1:
+                    t=c[strtmp].replace('"', '",34').replace("\\", f'", {hexstyle}5c')
+                    if t==c[strtmp]:
+                        t=t+'"'
+                    d=d+t
+                else:
+                    d=d+c[strtmp].replace('"', '",34,"').replace("\\", f'", {hexstyle}5c, "')
+            # print(f'\n---?d={f}')
+            # End of fixup
+
             m=program_counter+l
+            if commentlevel==0:
+                addcomment="; "
+            else:
+                addcomment=""
 
             # print(f'pc={hex(program_counter)} l={l} m={hex(m)} str_loc={str_locations[program_counter]}')
             # program_counter=m
@@ -1283,7 +1372,7 @@ while program_counter < max(code):
                     # print("3")
                     # found terminator, output it
                     # known_string=f'DEFB {b}{decode_terminator(code[m][0])}'
-                    code_output(orig,f'DEFB {b}{decode_terminator(code[m][0])}',list_address,f'{hexstyle}{orig:x} to {hexstyle}{(orig+len(a)+1):x}')
+                    code_output(orig,f'DEFB {b}{decode_terminator(code[m][0])}',list_address,f'{addcomment}{hexstyle}{orig:x} to {hexstyle}{(orig+len(a)+1):x}')
                     # print(f'Bump 1 {hex(program_counter)}-->{hex(program_counter+len(a)-1)}')
                     program_counter += len(a)-1
                 elif identified(m)=="S" and not is_terminator(code[m][0]):
@@ -1291,14 +1380,14 @@ while program_counter < max(code):
                     # Causing issues with some string endings
                     #No terminator, just dump the string
                     # print("-->", hex(program_counter),b)
-                    code_output(orig,f'DEFB {b}"',list_address,f'{hexstyle}{orig:x} to {hexstyle}{orig+len(a)-2:x}')
+                    code_output(orig,f'DEFB {b}"',list_address,f'{addcomment}{hexstyle}{orig:x} to {hexstyle}{orig+len(a)-2:x}')
                     # print(f'Bump 2 {hex(program_counter)}-->{hex(program_counter+len(a)-2)}')
                     program_counter += len(a)-2
                     # program_counter=program_counter+len(b)
                     # str_locations[program_counter]
                 else:
                     # print("5")
-                    code_output(orig,f'DEFB {b}"',list_address,f'{hexstyle}{orig:x} to {hexstyle}{orig+len(a)-2:x}')
+                    code_output(orig,f'DEFB "{d}',list_address,f'{addcomment}{hexstyle}{orig:x} to {hexstyle}{orig+len(a)-2:x}')
                     # print(f'Bump 3 {hex(program_counter)}-->{hex(program_counter+len(a)-2)}')
                     program_counter += len(a)-2
                     # print(hex(program_counter))
@@ -1348,7 +1437,7 @@ while program_counter < max(code):
                 #     print("----> 1-",hex(program_counter),identified(program_counter))
                 # program_counter=program_counter+str_len
                 if identified(program_counter)=="S":
-                    code_output(program_counter,f'DEFB "{result}{decode_terminator(code[program_counter+str_len][0])}',list_address,f'{hexstyle}{program_counter:x} to {hexstyle}{(program_counter+str_len+1):x}')
+                    code_output(program_counter,f'DEFB "{result}{decode_terminator(code[program_counter+str_len][0])}',list_address,f'{addcomment}{hexstyle}{program_counter:x} to {hexstyle}{(program_counter+str_len+1):x}')
                     # Bump for terminator
                     # print(f'Bump 4 {hex(program_counter)}-->{hex(program_counter+str_len)}')
                     program_counter +=str_len+1
@@ -1390,12 +1479,16 @@ while program_counter < max(code):
                     f"('{chr(tmp - 0x80)}') + {hexstyle}80" if 31 < (tmp - 0x80) < 127 else hex(tmp)
                 )
             )
-            code_output(program_counter, f"DEFB {hexstyle}{tmp:x}", list_address, out_tmp)
+            #BUG: Causes defb 01 01 on -c 0
+            if commentlevel==0:
+                out_tmp="; "+out_tmp
+            code_output(program_counter, f"DEFB {hexstyle}{tmp:x}", list_address, f'{out_tmp}')
             # debug("PC Bump")
             program_counter += 1 #FIXME - tripping PC too much?
     elif identified(program_counter) == "C": # or (stay_in_code and identified(program_counter)!="C"):
         # debug("C2 - 1")
         b = z80.decode(decode_buffer, 0)
+        debug(b)
         conds = z80.disasm(b).split(",")[0] + ","
         if b.op in (b.op.JR, b.op.DJNZ):
             # debug("C - 1a")
@@ -1425,12 +1518,22 @@ while program_counter < max(code):
                     program_counter,
                     tmp,
                     list_address,
-                    explain.code(tmp,commentlevel),
+                    explain.code(tmp,explainlevel),
                     add_extra_info(decode_buffer),
                 )
                 program_counter += b.len
             else:
                 program_counter += b.len
+        elif b.op is b.op.CP and b.operands[0][0]==b.operands[0][0].IMM:
+            tmp=process_hextype(z80.disasm(b))
+            code_output(
+                program_counter,
+                tmp,
+                list_address,
+                explain.code(z80.disasm(b),explainlevel),
+                add_extra_info(decode_buffer),
+            )
+            program_counter += b.len
         elif (
             b.op in (b.op.JP, b.op.CALL)
             and b.operands[0][0] is not b.operands[0][0].REG_DEREF
@@ -1447,7 +1550,7 @@ while program_counter < max(code):
                     program_counter,
                     tmp,
                     list_address,
-                    explain.code(z80.disasm(b),commentlevel),
+                    explain.code(z80.disasm(b),explainlevel),
                     add_extra_info(decode_buffer),
                 )
                 program_counter += b.len
@@ -1457,14 +1560,12 @@ while program_counter < max(code):
             # debug("C2 - 3")
             data_addr = handle_data(b)
             if data_addr is None:  # So something like LD A,(BC) or LD A,B
-                tmp=z80.disasm(b)
-                if asmtype()==3:
-                    tmp=tmp.replace("0x","&")
+                tmp=process_hextype(z80.disasm(b))
                 code_output(
                     program_counter,
                     tmp,
                     list_address,
-                    explain.code(z80.disasm(b),commentlevel),
+                    explain.code(z80.disasm(b),explainlevel),
                     add_extra_info(decode_buffer),
                 )
                 program_counter += b.len
@@ -1484,9 +1585,7 @@ while program_counter < max(code):
                     )  # Convert inline hex to L_xxxx label
                     # print(labelled)
                 else:
-                    if asmtype()==3:
-                        tmp=tmp.replace("0x","&")
-                    labelled = tmp
+                    labelled = process_hextype(tmp)
                 str_for_comment = ""
                 if data_addr in labels:
                     if handle_data(b) in str_locations:
@@ -1497,7 +1596,7 @@ while program_counter < max(code):
                     program_counter,
                     labelled,
                     list_address,
-                    explain.code(labelled,commentlevel) + " " + str_for_comment,
+                    explain.code(labelled,explainlevel) + " " + str_for_comment,
                     add_extra_info(decode_buffer),
                 )
                 program_counter += b.len
@@ -1509,7 +1608,7 @@ while program_counter < max(code):
                 program_counter,
                 tmp,
                 list_address,
-                explain.code(z80.disasm(b),commentlevel),
+                explain.code(z80.disasm(b),explainlevel),
                 add_extra_info(decode_buffer),
             )
             program_counter += b.len

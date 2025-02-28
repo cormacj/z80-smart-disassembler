@@ -792,7 +792,7 @@ def uint2str(d):
 
 def displ2str(d):
     if d == 0:
-        return ''
+        return '+%x' % d # CMG - Fix up to make disassembly more compatible
     if d >= 16:
         return '+0x%x' % d
     if d > 0:
