@@ -47,21 +47,23 @@ Formatting options:
 ```
 
 # Formatting
+
 `-s STRINGTERMINATOR string terminator value`
 
 The defaults are [0, 13, 0x8d] and any printable characters+0x80.
-Repeat this as many times as needed, eg -s 76 -s ";"
-You can supply a number, or a single character, eg -s 0 or -s "Q"
-
+Repeat this as many times as needed, eg `-s 76 -s ";"
+You can supply a number, or a single character, eg `-s 0 or -s "Q"`
+---
 `-a {pyradev,z80asm,maxam,z88}`
+
 This applies particular formats the code for particular assemblers. The default is z88.
 
-Pyradev requires hex addresses in the format 12cdH
+Pyradev requires hex addresses in the format `12cdH`
 
-Maxam uses hex addresses in the format &12cd
+Maxam uses hex addresses in the format `&12cd`
 
-Both z80asm and z88 are equivalent. The hex number style is 0x12cd
-
+Both z80asm and z88 are equivalent. The hex number style is `0x12cd`
+---
 `--style {lst,asm}`
 The default is asm style.
 
@@ -70,19 +72,19 @@ asm produces a file that can be assembled:
 C_0108:                        ;          XREF: 0x11C
 LD A,(IX+0)
 ```
-
+---
 lst is a dump style output:
 ```
                             C_0108:                        ; XREF: 0x11C
 0x108:   dd 7e 00  ".~."        LD A,(IX+0)                ;
 ```
-
+---
 `--xref {off,on}`
 This enables or disable cross references for labels. This adds a XREF comment to labels with the addresses that calls this label.
 
 `--stayincode`
 Don't try to decode data after a RET/JP. Sometimes the disassember will assume that data after a RET or a JP instruction is data, but it's actually code. This forces the disassembler to continue to treat the next bytes as code, unless it's overridden by a template instruction.
-
+---
 
 `--labeltype {1,2}`
 This changes the format of generated labels. The default method is short labels.
@@ -90,7 +92,7 @@ This changes the format of generated labels. The default method is short labels.
 1: Uses short names eg D_A123 or C_A345
 
 2: Uses full names, eg data_A123 or code_A123
-
+---
 `-c {0,1,2}, --comments {0,1,2}`
 
 This changes how generated comments are displayed.
