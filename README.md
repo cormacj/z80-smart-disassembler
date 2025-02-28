@@ -53,7 +53,9 @@ Formatting options:
 The defaults are [0, 13, 0x8d] and any printable characters+0x80.
 Repeat this as many times as needed, eg `-s 76 -s ";"
 You can supply a number, or a single character, eg `-s 0 or -s "Q"`
+
 ---
+
 `-a {pyradev,z80asm,maxam,z88}`
 
 This applies particular formats the code for particular assemblers. The default is z88.
@@ -63,7 +65,9 @@ Pyradev requires hex addresses in the format `12cdH`
 Maxam uses hex addresses in the format `&12cd`
 
 Both z80asm and z88 are equivalent. The hex number style is `0x12cd`
+
 ---
+
 `--style {lst,asm}`
 The default is asm style.
 
