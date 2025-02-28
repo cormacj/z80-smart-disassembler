@@ -46,7 +46,32 @@ Formatting options:
   --explain {2,1,0}     0: (Default) No code explanations 1: Data references only 2: Everything
 ```
 
-# Formatting
+# Decoding options
+
+`-o OUTFILE`
+
+This writes the disassembly to OUTFILE. If this is omitted, then disassembly will go to the screen.
+
+---
+
+`-l LOADADDRESS`, or `--load LOADADDRESS`
+
+Specify where in RAM the code loads. If a program is written to load at address 0x100 then use `-l 0x100` so that calls and other instructions with addresses will be decoded properly.
+
+---
+
+`--end ENDADDRESS`
+
+Specify an address to stop disassembling. See README.md for more details.
+
+Extracting binary files from a .dsk image means that a 18 byte binary file might be 1024 bytes when it's extracted.
+
+For, example, if you have a 18 byte .COM file then the --end value for this would --end 0x118 because the usual load address is 0x100.
+
+For example:
+`./z80-disassembler.py --load 0x100 --end 0x118 EXAMPLE.COM`
+
+# Formatting options
 
 `-s STRINGTERMINATOR string terminator value`
 
@@ -131,6 +156,7 @@ CP 0x1f                    ;0x10b:   fe 1f  ".."
 ---
 
 `--explain {0,1,2}`
+
 0: (Default) No code explanations
 ```
 LD A,0x2e                  ;0x11f:   3e 2e  ">."
@@ -172,14 +198,6 @@ A template file is a standard text file. The format for the file is as follows:
 
   This is then treated in the disassember as mark locations `0xc006` to `0xc123` as code with the label for this area being `JUMP_TABLE`
 
-# --end ENDADDRESS
-
-Extracting binary files from a .dsk image means that a 18 byte binary file might be 1024 bytes when it's extracted.
-
-For, example, if you have a 18 byte .COM file then the --end value for this would --end 0x118 because the usual load address is 0x100.
-
-For example:
-`./z80-disassembler.py --load 0x100 --end 0x118 EXAMPLE.COM`
 
 # Helper Scripts
 
