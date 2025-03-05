@@ -110,7 +110,7 @@ def is_alphanumeric(byte):
 def is_terminator(byte):
     if byte in terminator_list:
         return True
-    elif (31 + 128 <= byte <= 126 + 128): #Anything printable+0x80
+    elif ((31 + 128) <= byte <= (126 + 128)): #Anything printable+0x80
         return True
     else:
         return False
@@ -709,21 +709,9 @@ def update_label_name(addr, type):
     if is_in_code(addr):
         match args.labeltype:
             case "1":
-                # case typr
-                # debug("--> case 1")
                 result = type
-                # debug("result=",result)
-                # print("-XX->1",result)
             case "2":
                 result=type_lookup(type)
-                # debug(f"--> case 2 {identified(addr)}")
-                # if identified(addr) == "C":
-                #     result = "code"
-                # elif identified(addr) == "S":
-                #     result = "string"
-                # else:
-                #     result = "data"
-                # print("-xx->2",result)
         if asmtype()==2 and args.labeltype==1:
             # This is more of a fixup than anything else
             # z80asm is quirky and doesn't like L_AB12 style labels
@@ -1437,6 +1425,11 @@ while program_counter < max(code):
                 #     print("----> 1-",hex(program_counter),identified(program_counter))
                 # program_counter=program_counter+str_len
                 if identified(program_counter)=="S":
+                    if commentlevel==0:
+                        addcomment="; "
+                    else:
+                        addcomment=""
+
                     code_output(program_counter,f'DEFB "{result}{decode_terminator(code[program_counter+str_len][0])}',list_address,f'{addcomment}{hexstyle}{program_counter:x} to {hexstyle}{(program_counter+str_len+1):x}')
                     # Bump for terminator
                     # print(f'Bump 4 {hex(program_counter)}-->{hex(program_counter+str_len)}')
@@ -1592,13 +1585,22 @@ while program_counter < max(code):
                         str_for_comment = (
                             " - References: " + str_locations[handle_data(b)]
                         )
-                code_output(
-                    program_counter,
-                    labelled,
-                    list_address,
-                    explain.code(labelled,explainlevel) + " " + str_for_comment,
-                    add_extra_info(decode_buffer),
-                )
+                if commentlevel==0:
+                    code_output(
+                        program_counter,
+                        labelled,
+                        list_address,
+                        "", #explain.code(labelled,explainlevel) + " " + str_for_comment,
+                        add_extra_info(decode_buffer),
+                    )
+                else:
+                    code_output(
+                        program_counter,
+                        labelled,
+                        list_address,
+                        explain.code(labelled,explainlevel) + " " + str_for_comment,
+                        add_extra_info(decode_buffer),
+                    )
                 program_counter += b.len
         else:
             tmp=z80.disasm(b)
