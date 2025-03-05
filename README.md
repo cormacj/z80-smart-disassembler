@@ -308,8 +308,8 @@ S_109:                         ;
 ```
 # Known Issues
 
-* Generated code causes z80asm to crash. This appears to be a z80asm bug relating to LD A,(IX). Most assemblers treat it at LD A,(IX+0) but that crashes z80asm. Changing this to LD A,(IX+0) fixes that.
-* The disassembler will generate references to labels that don't exist
+* z80asm code generation causes errors on recompile
+* The disassembler can generate references to labels that don't exist
 * String detection fails oddly towards the end of a ROM and maybe elsewhere, so use the `generate_string_locations.sh` helper script to make a template if this happens.
 
 # ToDo
