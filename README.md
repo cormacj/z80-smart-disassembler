@@ -91,7 +91,9 @@ Pyradev requires hex addresses in the format `12cdH`
 
 Maxam uses hex addresses in the format `&12cd`
 
-Both z80asm and z88 are equivalent. The hex number style is `0x12cd`
+z88 and z80asm use number style `0x12cd`
+
+z80asm implies that labeltype is 2 which uses longer labelnames (eg `code_12CD`)
 
 ---
 
