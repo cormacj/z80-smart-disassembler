@@ -1,59 +1,71 @@
-;Pass 0: Prep
-;Pass 1: Identify Data areas ;Pass 3: Build call/jump table 
-;Part ??: Tagging all the areas
-;Part ??.a: Search for strings
-;Part ??.b: Build structure
-;Part ??: Code:
+
+z80-disassembler.py - v0.75 - A Smart Z80 reverse assembler
+Visit https://github.com/cormacj/z80-smart-disassembler for updates and to report issues
+
+Disassembling a.bin: 101 bytes
 
 
-org 0xc000
-    SET 7,(IY+1)               ;0xc000:   fd cb 01 fe  "...." Set bit 7 of (IY+1)
-    JP C_C032                  ;0xc004:   c3 32 c0  ".2."     Jump to address at 0xc032
+
+Pass 1: Identify addressable areas
+
+Pass 2: Search for strings
+
+Pass 3: Build code structure
+
+Pass 4: Validate labels
+
+Pass 5: Produce final listing
+;-----------------------------------
+; Produced using: z80-disassembler.py v0.75 - A Smart Z80 reverse assembler
+; Visit https://github.com/cormacj/z80-smart-disassembler for updates and to report issues
+;
+; Command line used: z80-disassembler.py a.bin 
+;-----------------------------------
+
+    org 0x100
+
+    SET 7,(IY+1)               ;0x100:   fd cb 01 fe  "...." 
+    JP C_0132                  ;0x104:   c3 32 01  ".2." 
 ;--------------------------------------
-
-D_C007:                        ;         XREF=0xC032 0xC03C 
-    DEFB "This is a C string"  ;0xc007:                       
-    DEFB 0x0                   ;0xc019:                       
-    DEFB "This is a Amstrad strin"  ;0xc01a:                       
-    DEFB ('g') + 0x80          ;0xc031:                       
+S_0107:                        ;          XREF: 0x132 0x13C 
+    DEFB "This is a C string", 0x00  ;0x107:   0x107 to 0x11c
+    DEFB "This is a Amstrad strin", 'g' + 0x80  ;0x11a:   0x11a to 0x134
 ;--------------------------------------
-
-C_C032:                        ;         XREF=0xC004 0xC057 
-    LD HL,D_C007               ;0xc032:   21 07 c0  "!.."     Load HL with the value from D_C007  - References: "This is a C string"
-    LD (D_C063),HL             ;0xc035:   22 63 c0  ""c."     Load (D_C063) with the value from HL 
-    CALL C_C054                ;0xc038:   cd 54 c0  ".T."     The current PC value plus three is pushed onto the stack, then PC is loaded with 0xc054.
-    RET                        ;0xc03b:   c9  "."             The top stack entry is popped into PC, resuming execution at that point.
-    LD HL,D_C007               ;0xc03c:   21 07 c0  "!.."     Load HL with the value from D_C007  - References: "This is a C string"
-    LD (D_C063),HL             ;0xc03f:   22 63 c0  ""c."     Load (D_C063) with the value from HL 
-    CALL C_C054                ;0xc042:   cd 54 c0  ".T."     The current PC value plus three is pushed onto the stack, then PC is loaded with 0xc054.
-    RET                        ;0xc045:   c9  "."             The top stack entry is popped into PC, resuming execution at that point.
+C_0132:                        ;          XREF: 0x104 
+    LD HL,S_0107               ;0x132:   21 07 01  "!.."   - References: "This is a C string"
+    LD (D_0163),HL             ;0x135:   22 63 01  ""c."  
+    CALL C_0154                ;0x138:   cd 54 01  ".T." 
+    RET                        ;0x13b:   c9  "." 
+    LD HL,S_0107               ;0x13c:   21 07 01  "!.."   - References: "This is a C string"
+    LD (D_0163),HL             ;0x13f:   22 63 01  ""c."  
+    CALL C_0154                ;0x142:   cd 54 01  ".T." 
+    RET                        ;0x145:   c9  "." 
 ;--------------------------------------
-
-D_C046:                        ;         XREF=0xC054 0xC05C 
-    DEFB "A"                   ;0xc046:                       
-    DEFB 0x0                   ;0xc047:                       
-    DEFB "A"                   ;0xc048:                       
-    DEFB "B"                   ;0xc049:                       
-    DEFB 0x0                   ;0xc04a:                       
-    DEFB "ABC"                 ;0xc04b:                       
-    DEFB 0x0                   ;0xc04e:                       
-    DEFB "ABCD"                ;0xc04f:                       
-    DEFB 0x0                   ;0xc053:                       
+D_0146:                        ;          XREF: 0x154 0x15C 
+    DEFB 0x41                  ;0x146:   "A"
+    DEFB 0x0                   ;0x147:   0x0
+    DEFB 0x41                  ;0x148:   "A"
+    DEFB 0x42                  ;0x149:   "B"
+    DEFB 0x0                   ;0x14a:   0x0
+    DEFB "ABC", 0x00           ;0x14b:   0x14b to 0x151
+    DEFB "ABCD", 0x00          ;0x14f:   0x14f to 0x156
 ;--------------------------------------
-
-C_C054:                        ;         XREF=0xC038 0xC042 
-    LD HL,D_C046               ;0xc054:   21 46 c0  "!F."     Load HL with the value from D_C046 
-    JR C_C032                  ;0xc057:   18 d9  ".."         Relative jump so it can only jump between 128 bytes back/ahead to C_C032
-    JR C_C05C                  ;0xc059:   18 01  ".."         Relative jump so it can only jump between 128 bytes back/ahead to C_C05C
-    RET                        ;0xc05b:   c9  "."             The top stack entry is popped into PC, resuming execution at that point.
+C_0154:                        ;          XREF: 0x138 
+    LD HL,D_0146               ;0x154:   21 46 01  "!F."  
+    JR C_0132                  ;0x157:   18 d9  ".." 
+    JR C_015C                  ;0x159:   18 01  ".." 
+    RET                        ;0x15b:   c9  "." 
 ;--------------------------------------
-
-C_C05C:                        ;         XREF=0xC060 0xC059 
-    LD IX,D_C046               ;0xc05c:   dd 21 46 c0  ".!F." Load IX with the value from D_C046 
-    DJNZ C_C05C                ;0xc060:   10 fa  ".."         The B register is decremented, and if not zero, the signed value d is added to PC. The jump is measured from the start of the instruction opcode. Note that DJNZ does a relative jump, so it can only jump between 128 bytes back/ahead.
-    RET                        ;0xc062:   c9  "."             The top stack entry is popped into PC, resuming execution at that point.
+C_015C:                        ;          XREF: 0x159 
+    LD IX,D_0146               ;0x15c:   dd 21 46 01  ".!F."  
+    DJNZ C_015C                ;0x160:   10 fa  ".." 
+    RET                        ;0x162:   c9  "." 
 ;--------------------------------------
+D_0163:                        ;          XREF: 0x135 0x13F 
+    DEFB 0x0                   ;0x163:   0x0
+    DEFB 0x0                   ;0x164:   0x0
 
-D_C063:                        ;         XREF=0xC035 0xC03F 
-    DEFB 0x0                   ;0xc063:                       
-    DEFB 0x0                   ;0xc064:                       
+
+Lines of code: 46
+Code Labels: 3
+Data Labels: 3
