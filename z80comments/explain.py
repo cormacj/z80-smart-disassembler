@@ -1,3 +1,18 @@
+
+"""
+Copyright (C) 2025 Cormac McGaughey
+
+This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; version 2.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with this program; if not, write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+"""
+
+# Some commands eg, CALL, have alternate versions: CALL 0x1234 and CALL nz,0x1234
+# This builds the ability to have a second comment in the list.
+# so CALL and CALL(2) will return different comments.
+
 opcode_comments = {
 "ADC": "Adds $2 and the carry flag to $1.",
 "ADD": "Adds $2 to $1. 8-bit arithmetic: N flag is reset, P/V is interpreted as overflow. Rest of the flags is modified by definition.",
@@ -100,7 +115,7 @@ def build_comment(opcode,reg_1="",reg_2="",reg_3=""):
         code_comment=result.replace("$1",reg_1).replace("$2",reg_2)
     return code_comment
 
-def code(opcode,commentlevel):
+def code(opcode,commentlevel=3):
     # print(opcode)
     if commentlevel==0:
         return ""

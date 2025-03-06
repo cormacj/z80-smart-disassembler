@@ -1,8 +1,21 @@
 #!/usr/bin/env python3
+"""
+Copyright (C) 2025 Cormac McGaughey
+
+This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; version 2.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with this program; if not, write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+"""
+
 #BUG: LD A,(0x0009) isn't parsing out the hex part for labels
 #BUG: disassemling still produces references to instructions that aren't there.
 #BUG: -c 0 produces DEFB 0x1 0x1 rather than DEFB 0x1
+
 """
+See README.md for full details.
+
 This program is designed to try and disassemble Z80 code and return something as close to the original
 as possible. This means that strings and data need to be identified, and all the code needs to processed
 and decoded.
@@ -245,7 +258,7 @@ def display_version_info():
     """
     print()
     print(f'{os.path.basename(sys.argv[0])} - v{myversion} - A Smart Z80 reverse assembler')
-    print(f'Visit https://github.com/cormacj/z80-smart-disassembler for updates and to report issues' )
+    print('Visit https://github.com/cormacj/z80-smart-disassembler for updates and to report issues' )
     print()
 
 def output_version_info():
@@ -263,7 +276,7 @@ def output_version_info():
 
     do_write(";-----------------------------------")
     do_write(f'; Produced using: {os.path.basename(sys.argv[0])} v{myversion} - A Smart Z80 reverse assembler')
-    do_write(f'; Visit https://github.com/cormacj/z80-smart-disassembler for updates and to report issues' )
+    do_write('; Visit https://github.com/cormacj/z80-smart-disassembler for updates and to report issues' )
     do_write(f';\n; Command line used: {tmp}')
     do_write(";-----------------------------------\n")
 
@@ -414,7 +427,16 @@ def parse_arguments():
     """
     import argparse
 
-    parser = argparse.ArgumentParser(description="A Smart Z80 reverse assembler")
+    parser = argparse.ArgumentParser(description="A Smart Z80 reverse assembler",
+    epilog="This program comes with ABSOLUTELY NO WARRANTY. \
+You may distribute copies of the program under the terms \
+of the GNU General Public License as published by \
+the Free Software Foundation; either version 2 of the \
+License, or (at your option) any later version.\
+\
+The complete text of the GPL can be found in \
+/usr/share/common-licenses/GPL."
+)
 
     required = parser.add_argument_group("Required arguments")
     recommended = parser.add_argument_group("Recommended arguments, but optional")
@@ -572,6 +594,9 @@ def validate_arguments(argslist):
     commentlevel=to_number(args.commentlevel)
     explainlevel=to_number(args.explainlevel)
     stay_in_code=args.stay_in_code
+
+    if args.assembler=="z80asm":
+        args.labeltype=2
     #Now ensure that the template file can be opened
     try:
         if args.templatefile:
@@ -756,7 +781,7 @@ def lookup_label(addr, prettyprint=""):
         if (code[addr][2]!="") and (is_in_code(addr)):
             if asmtype()>1:
                 tmp=f'{code[addr][2]}'
-                return tmp.lower()
+                return tmp
             else:
                 return f'{code[addr][2]}'
         else:
@@ -920,8 +945,8 @@ def findstring(memstart, memend):
         if re.search(r"[A-Za-z]{3,}", s):
             for delims in terminator_list:
                 if s.count(chr(delims))>1:
-                    l=len(s)-1
-                    s=s[1:l]
+                    strlen=len(s)-1
+                    s=s[1:strlen]
                     # print(f's: ->{s}<-')
                     # print(delims,s.count(chr(delims)),s)
                     res=split_string(s,chr(delims))
@@ -988,7 +1013,7 @@ try:
     with open(args.filename, "rb") as f:
         bin_data = f.read(readsize)
     print(f"Disassembling {args.filename}: {len(bin_data)} bytes\n")
-except:
+except IOError:
     print("Error: Could not read file ", args.filename)
     sys.exit(1)
 
@@ -1324,8 +1349,8 @@ while program_counter < max(code):
             orig=program_counter
             # print("---? ",hex(program_counter),str_locations[program_counter])
             a=str_locations[program_counter]
-            l=len(a)-2 #-2 because its quoted
-            b=a[0]+a[1:l+1].replace('"', '",34,"').replace("\\", f'", {hexstyle}5c, "')
+            strlen=len(a)-2 #-2 because its quoted
+            b=a[0]+a[1:strlen+1].replace('"', '",34,"').replace("\\", f'", {hexstyle}5c, "')
             # print(a[1:len(a)-1])
 
             # Now, we check strings for ending with breaking terminators, eg quotes or slashes that would be treated as escaping characters.
@@ -1343,7 +1368,7 @@ while program_counter < max(code):
             # print(f'\n---?d={f}')
             # End of fixup
 
-            m=program_counter+l
+            m=program_counter+strlen
             if commentlevel==0:
                 addcomment="; "
             else:
