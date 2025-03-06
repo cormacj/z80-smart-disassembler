@@ -6,6 +6,22 @@ This was inspired by Sourcer from V Communications (see https://corexor.wordpres
 
 I wanted something similar for Z80 code and this project aims to do this.
 
+<!-- TOC -->
+
+- [z80-smart-disassembler](#z80-smart-disassembler)
+- [Usage](#usage)
+- [Decoding options](#decoding-options)
+- [Formatting options](#formatting-options)
+- [Templates](#templates)
+- [Helper Scripts](#helper-scripts)
+- [Example usage](#example-usage)
+- [Example Results](#example-results)
+- [Known Issues](#known-issues)
+- [ToDo](#todo)
+- [Dependencies](#dependencies)
+
+<!-- /TOC -->
+
 # Usage
 
 ```
@@ -179,6 +195,10 @@ CALL 0xbb5a                ;0x121:   cd 5a bb  ".Z." The current PC value plus t
 
 # Templates
 
+Template files are a way to specify ways to tell the disassembler how to handle certain areas of memory. This functionality is still under development with some functions still be implimented.
+
+
+
 A template file is a standard text file. The format for the file is as follows:
 
 * Comments start with ";"
@@ -186,11 +206,13 @@ A template file is a standard text file. The format for the file is as follows:
     `start address, end address, data type, label`
 
   data types can be one of these:<br>
-    b = byte<br>
+    b = byte *<br>
     w = word<br>
     s = string<br>
     c = code<br>
     p = pointer<br>
+
+        * = still to be implimented
 
   You can refer to a pointer by enclosing the address in (). When the disassembler sees this, it looks at the word at the pointer location and uses that value instead.
 
@@ -309,8 +331,6 @@ S_109:                         ;
     DEFB "Hello, world!$", &00  ;&109:                       &109 to &11a
 ```
 # Known Issues
-
-* z80asm code generation causes errors on recompile
 * The disassembler can generate references to labels that don't exist
 * String detection fails oddly towards the end of a ROM and maybe elsewhere, so use the `generate_string_locations.sh` helper script to make a template if this happens.
 
