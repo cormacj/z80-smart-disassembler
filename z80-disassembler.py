@@ -384,6 +384,8 @@ def process_template(filename):
                             #     for loop in range(begin,end):
                             #         print(loop)
                             #     mark_handled(addr,1,"D")
+                            # case "b":
+                            #     mark_handled(addr,2,"D")
                             case "w":
                                 mark_handled(addr,2,"D")
                             case "c":
@@ -726,25 +728,19 @@ def update_label_name(addr, type):
         A string in the format D_1234 or data_1234 is returns
     """
 
-    # if is_in_code(addr):
-    #     code[addr][2]=f'{type}_{addr:04X}'
-    # addr=int(addr)
-    # dump_code_array("update",addr)
+    #Flag a traceable default if something strange happens
     result="error"
+
+    match to_number(args.labeltype):
+        case 1:
+            result = type
+        case 2:
+            result=type_lookup(type)
+        case _:
+            result = type
+
     if is_in_code(addr):
-        match args.labeltype:
-            case "1":
-                result = type
-            case "2":
-                result=type_lookup(type)
-        if asmtype()==2 and args.labeltype==1:
-            # This is more of a fixup than anything else
-            # z80asm is quirky and doesn't like L_AB12 style labels
-            # label style 2 (code_ or data_) is fine because its longer
-            code[addr][2]=f'{result}{addr:04X}'
-        else:
-            code[addr][2]=f'{result}_{addr:04X}'
-        # print("--XX-> Writing ",code[addr][2])
+        code[addr][2]=f'{result}_{addr:04X}'
 
 def update_xref(addr, xref):
     """
