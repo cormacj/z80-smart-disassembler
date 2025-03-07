@@ -300,7 +300,7 @@ def check_for_pointer(addr):
         ptr.ispointer=True
         ptr.source=to_number(p_addr)
         ptr.destination=(bin_data[p_addr+1]*0x100)+(bin_data[p_addr]) #Get the address where the pointer is pointing to
-        print("check for ptr:",hex(p_addr),hex(ptr.destination))
+        # print("check for ptr:",hex(p_addr),hex(ptr.destination))
         return ptr
     else:
         #Not a pointer, just a number
@@ -384,19 +384,19 @@ def process_template(filename):
                             #     for loop in range(begin,end):
                             #         print(loop)
                             #     mark_handled(addr,1,"D")
-                            # case "b":
-                            #     mark_handled(addr,2,"D")
+                            case "b":
+                                mark_handled(addr,2,"Db")
                             case "w":
-                                mark_handled(addr,2,"D")
+                                mark_handled(addr,2,"Dw")
                             case "c":
                                 # print("Code:",hex(begin),hex(end))
                                 for loop in range(begin,end):
                                     mark_handled(loop,1,"C")
                                 mark_handled(addr,3,"C")
                             case "p":
-                                mark_handled(addr,2,"D")
+                                mark_handled(addr,2,"Dw")
                                 code_loc=begin #Get the address where the pointer is pointing to
-                                mark_handled(code_loc,2,"D")
+                                # mark_handled(code_loc,2,"Dw")
                             case "s":
                                 for loop in range(begin,end-1):
                                     mark_handled(loop,1,"S")
@@ -714,6 +714,10 @@ def type_lookup(datatype):
             return "string"
         case "D":
             return "data"
+        case "Db":
+            return "data"
+        case "Dw":
+            return "data"
         case "C":
             return "code"
 
@@ -735,7 +739,7 @@ def update_label_name(addr, type):
         case 1:
             result = type
         case 2:
-            result=type_lookup(type)
+            result = type_lookup(type)
         case _:
             result = type
 
@@ -1192,6 +1196,18 @@ while program_counter < max(code):
                 )
             )
             program_counter += 1
+    elif identified(program_counter) == "Dw":
+        if is_in_code(program_counter):
+            tmp = get_from_code(program_counter,0) #code[loc][0]
+            out_tmp = (
+                f'"{chr(tmp)}"'
+                if 31 < tmp < 127
+                else (
+                    f"('{chr(tmp - 0x80)}') + {hexstyle}80" if 31 < (tmp - 0x80) < 127 else hex(tmp)
+                )
+            )
+            # print(out_tmp)
+            program_counter += 1
     elif identified(program_counter) == "C":
         b = z80.decode(decode_buffer, 0)
         conds = z80.disasm(b).split(",")[0] + ","
@@ -1479,7 +1495,7 @@ while program_counter < max(code):
         # print(f'Bump 7 {hex(program_counter)}-->{hex(program_counter+str_sizes[program_counter])}')
         program_counter += str_sizes[program_counter]
     # elif identified(program_counter) == "D" and not stay_in_code:
-    elif identified(program_counter) == "D":
+    elif identified(program_counter) in ("D", "Db"):
         # dump_code_array("---->",program_counter)
 
         # debug("D2 - 2")
@@ -1499,6 +1515,47 @@ while program_counter < max(code):
             code_output(program_counter, f"DEFB {hexstyle}{tmp:x}", list_address, f'{out_tmp}')
             # debug("PC Bump")
             program_counter += 1 #FIXME - tripping PC too much?
+    elif identified(program_counter) == "Dw":
+        # dump_code_array("---->",program_counter)
+
+        # debug("D2 - 2")
+        if is_in_code(program_counter):
+            # debug("D - 3")
+            tmpl = get_from_code(program_counter,0) #Low byte
+            tmph = get_from_code(program_counter+1,0) #High byte
+            tmp=((tmph*256)+tmpl) #make it a word
+            if (tmp in labels) or (tmp in template_labels):
+                if (tmp in template_labels):
+                    labelname=template_labels[tmp]
+                    # if labelname[0]=="0":
+                    #     print("1 used")
+                else:
+                    labelname=lookup_label(tmp,1)
+                    # if labelname[0]=="0":
+                    #     print("2 used")
+            out_tmp = (
+                f'"{chr(tmpl)}"'
+                if 31 < tmpl < 127
+                else (
+                    f"('{chr(tmpl - 0x80)}') + {hexstyle}80" if 31 < (tmpl - 0x80) < 127 else hex(tmpl)
+                )
+            )
+            out_tmp = out_tmp+" "+(
+                f'"{chr(tmph)}"'
+                if 31 < tmph < 127
+                else (
+                    f"('{chr(tmph - 0x80)}') + {hexstyle}80" if 31 < (tmph - 0x80) < 127 else hex(tmph)
+                )
+            )
+            if labelname[0]!="0":
+                out_tmp=f"Pointer to {labelname}"
+            #BUG: Causes defb 01 01 on -c 0
+            if commentlevel==0:
+                out_tmp="; "+out_tmp
+            # code_output(program_counter, f"DEFB {hexstyle}{tmp:x}", list_address, f'{out_tmp}')
+            code_output(program_counter, f"DEFB {labelname}", list_address, f'{out_tmp}')
+            # debug("PC Bump")
+            program_counter += 2 #FIXME - tripping PC too much?
     elif identified(program_counter) == "C": # or (stay_in_code and identified(program_counter)!="C"):
         # debug("C2 - 1")
         b = z80.decode(decode_buffer, 0)
