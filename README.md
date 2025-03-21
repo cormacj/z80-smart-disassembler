@@ -25,11 +25,12 @@ I wanted something similar for Z80 code and this project aims to do this.
 # Usage
 
 ```
-z80-disassembler.py - v0.75 - A Smart Z80 reverse assembler
+
+z80-disassembler.py - v0.80 - A Smart Z80 reverse assembler
 Visit https://github.com/cormacj/z80-smart-disassembler for updates and to report issues
 
-usage: z80-disassembler.py [-h] [-q] [-o OUTFILE] [-t TEMPLATEFILE] [-s STRINGTERMINATOR] [-a {pyradev,z80asm,maxam,z88}] [--style {lst,asm}] [-l LOADADDRESS] [-e ENDADDRESS]
-                           [--xref {off,on}] [--stayincode] [--labeltype {2,1}] [-c {2,1,0}] [--explain {2,1,0}]
+usage: z80-disassembler.py [-h] [-q] [-o OUTFILE] [-t TEMPLATEFILE] [--labels LABELS] [-s STRINGTERMINATOR] [-a {maxam,z88,z80asm,pyradev}] [--style {lst,asm}] [-l LOADADDRESS]
+                           [-e ENDADDRESS] [--xref {off,on}] [--stayincode] [--labeltype {1,2}] [-c {0,1,2}] [--explain {0,1,2}]
                            filename
 
 A Smart Z80 reverse assembler
@@ -50,16 +51,19 @@ Recommended arguments, but optional:
 
 Formatting options:
   -t TEMPLATEFILE       Use a template file. This helps decode strings and allows for fine tuning disassembly. See README.md for more details
-  -s STRINGTERMINATOR   string terminator value - defaults are [0, 13, 141] and printable characters+0x80. You can supply a number, or a single character. You can repeat this as many times as needed.
-  -a {pyradev,z80asm,maxam,z88}, --assembler {pyradev,z80asm,maxam,z88}
+  --labels LABELSFILE   Use a label file. This file provides user-defined labels that may be external to the program. See README.md for more details
+  -s STRINGTERMINATOR   string terminator value - defaults are [0, 13, 141] and printable characters+0x80. You can supply a number, or a single character. You can repeat this as many times
+                        as needed.
+  -a {maxam,z88,z80asm,pyradev}, --assembler {maxam,z88,z80asm,pyradev}
                         Format the code for particular assemblers. The default is z88.
   --style {lst,asm}     asm produces a file that can be assembled. lst is a dump style output. The default is asm style.
   --xref {off,on}       Enable or disable cross references for labels
   --stayincode          Don't try to decode data after a RET/JP
-  --labeltype {2,1}     1: Uses short name eg D_A123 or C_A345 2: Uses full names, eg data_A123 or code_A123
-  -c {2,1,0}, --comments {2,1,0}
+  --labeltype {1,2}     1: Uses short label names eg D_A123 or C_A345 2: Uses descriptive label names, eg data_A123 or code_A123
+  -c {0,1,2}, --comments {0,1,2}
                         0: No comments 1: Address 2: (Default) Address+hex and ascii dump
-  --explain {2,1,0}     0: (Default) No code explanations 1: Data references only 2: Everything
+  --explain {0,1,2}     0: (Default) No code explanations 1: Data references only 2: Everything
+
 ```
 
 # Decoding options
@@ -109,7 +113,7 @@ Maxam uses hex addresses in the format `&12cd`
 
 z88 and z80asm use number style `0x12cd`
 
-z80asm implies that labeltype is 2 which uses longer labelnames (eg `code_12CD`)
+z80asm implies that labeltype is 2 which uses longer labelnames (eg `code_12CD`). This is because z80asm has issues with shorter variable names.
 
 ---
 
@@ -192,6 +196,33 @@ CALL 0xbb5a                ;0x121:   cd 5a bb  ".Z."
 LD A,0x2e                  ;0x11f:   3e 2e  ">." Load A with 0x2e
 CALL 0xbb5a                ;0x121:   cd 5a bb  ".Z." The current PC value plus three is pushed onto the stack, then PC is loaded with 0xbb5a.
 ```
+# Label file
+
+This is used by adding `--labels LABELSFILE` to the command line.
+
+A label file allows external calls, such as BIOS entry points, to be defined and used in disassembled code. I've included `amstrad-labels.txt` in this repository as an example and for convenience.
+
+The disassembler tracks what labels have been used during disassembly and will only add the labels that were used to the final disassembly.
+
+
+This is defined as follows:
+
+```
+;A list of Amstrad CPC BIOS calls.
+;Recorded here for use with the disassembler
+
+KL_ROM_SELECT      equ 0xb90f
+KL_CURR_SELECTION  equ 0xb912
+KL_PROBE_ROM       equ 0xb915
+KL_ROM_DESELECT    equ 0xb918
+```
+
+Comments start with ';'
+
+Blank lines are ignored.
+
+Labels should be structed as `Labelname equ 0x0000`
+
 
 # Templates
 
@@ -254,12 +285,17 @@ The disassembler will try to automatically identify strings in the code, but it 
 
 # Example usage
 
+This command disassembles the RODOS219.ROM file and stores the output in rodos.asm
+
 ```
-$ ./z80-disassembler.py RODOS219.ROM -l 0xc000 --style lst --xref on -o rodos-listing.lst
+$ ./z80-disassembler.py RODOS219.ROM -t amstrad_rom_template.txt -o rodos.asm -l 0xc000 -a z80asm  --labels amstrad-labels.txt
 
-./z80-disassembler.py v0.75 - A Smart Z80 reverse assembler
+z80-disassembler.py - v0.80 - A Smart Z80 reverse assembler
+Visit https://github.com/cormacj/z80-smart-disassembler for updates and to report issues
 
-Writing code to  rodos-listing.lst
+Writing code to  rodos.asm
+
+Disassembling RODOS219.ROM: 16384 bytes
 
 Loading code: |██████████████████████████████████████████████████| 100.0% Complete
 
@@ -273,13 +309,13 @@ Pass 4: Validate labels
     Progress: |██████████████████████████████████████████████████| 100.0% Complete
 Pass 5: Produce final listing
     Progress: |██████████████████████████████████████████████████| 100.0% Complete
+rodos.asm  created!
 
-rodos-listing.lst  created!
-
-Lines of code: 10181
-Code Labels: 735
-Data Labels: 54
+Lines of code: 9238
+Code Labels: 734
+Data Labels: 57
 ```
+
 # Example Results
 
 I wrote a simple "hello world" file and compiled it on an Amstrad.
