@@ -59,6 +59,8 @@ class Pointer(NamedTuple):
 list_address = 1
 min_length = 3
 identified_areas = {}
+printed_labels = defaultdict(list)
+extern_labels = defaultdict(list)
 labels = defaultdict(set)
 template_labels = defaultdict(set)
 terminator_list=[0,13,0x8d] # Null, CR and CR+0x80, Ascii + 0x80 is assumed
@@ -88,7 +90,7 @@ str_locations = {}
 str_sizes = {}
 style = "asm"
 hexstyle = "0x"
-myversion = "0.75"
+myversion = "0.80"
 
 
 #--- Debugging functions ---
@@ -309,6 +311,26 @@ def check_for_pointer(addr):
         ptr.ispointer=False
     return ptr
 
+def load_labels(filename):
+    try:
+        with open(filename, mode ='r') as file:
+            for lines in file:
+                #Lots, and lots of error checking
+                if lines.lower()[0]!=";" and lines!="":
+                    parsed=lines.split()
+                    if len(parsed)==3:
+                        lname=parsed[0]
+                        addr=to_number(parsed[2])
+                        # [0] = labelname
+                        # [1] = number of times it's called
+                        if lname[0]!=";":
+                            extern_labels[addr].append(lname)
+                            extern_labels[addr].append(0)
+    except OSError:
+        print("Error: Could not open labels file:", filename)
+        sys.exit(1)
+
+
 def process_template(filename):
     """
     Read the template file, and decode what is being requested.
@@ -462,6 +484,12 @@ The complete text of the GPL can be found in \
         help="Use a template file. This helps decode strings and allows for fine tuning disassembly. See README.md for more details")
 
     style.add_argument(
+        "--labels",
+        dest="labelsfile",
+        action="store",
+        help="Use a label file. This file provides user-defined labels that may be external to the program. See README.md for more details")
+
+    style.add_argument(
         "-s", dest="stringterminator",
         action="append",
         help=f"string terminator value - defaults are {terminator_list} and printable characters+0x80. You can supply a number, or a single character. You can repeat this as many times as needed.")
@@ -596,6 +624,9 @@ def validate_arguments(argslist):
     commentlevel=to_number(args.commentlevel)
     explainlevel=to_number(args.explainlevel)
     stay_in_code=args.stay_in_code
+
+    if args.labelsfile:
+        load_labels(args.labelsfile)
 
     if args.assembler=="z80asm":
         args.labeltype=2
@@ -772,7 +803,11 @@ def lookup_label(addr, prettyprint=""):
     """
     if not is_in_code(addr):
         debug("-->Not in code")
-        return f'{hexstyle}{addr:x}'
+        if addr in extern_labels:
+            extern_labels[addr][1]+=1
+            return extern_labels[addr][0]
+        else:
+            return f'{hexstyle}{addr:x}'
     elif prettyprint != "":
         # f'{result}_{addr:X}:{" ":9}'
         # print(hex(addr))
@@ -1170,16 +1205,11 @@ while program_counter < max(code):
 
     # Next, handle labels
     if (program_counter in labels) or (program_counter in template_labels):
-
         if (program_counter in template_labels):
             labelname=template_labels[program_counter]
         else:
-            # print(b)
-            # dump_code_array("what?",0xdb7b)
-            # # print(z80.decode(b))
-            # print(z80.disasm(b))
-            debug("lookup label: ",hex(program_counter))
             labelname=lookup_label(program_counter,1)
+        printed_labels[program_counter]=labelname
         code[program_counter][3]=labelname
 
     if identified(program_counter) == "D" and (program_counter in str_locations):
@@ -1235,34 +1265,86 @@ while program_counter < max(code):
         elif b.op is b.op.LD:  # and b.operands[0][0] is not b.operands[0][0].REG_DEREF:
             data_addr = handle_data(b)
             if data_addr is None:  # So something like LD A,(BC) or LD A,B
+                tmp=process_hextype(z80.disasm(b))
+                # code_output(
+                #     program_counter,
+                #     tmp,
+                #     list_address,
+                #     explain.code(z80.disasm(b),explainlevel),
+                #     add_extra_info(decode_buffer),
+                # )
                 program_counter += b.len
             else:
-                tmp = z80.disasm(b)
+                tmp = z80.disasm(b).replace(f'0x{data_addr:04x}',lookup_label(data_addr,1))
                 tmp_data_addr = handle_data(b)
                 tmp_addr = hex(handle_data(b))
-                if is_in_code(tmp_data_addr):
-                    #We only want to mess with strings, ignore all previous instructions
-                    if code[tmp_data_addr][1]=="S" and is_terminator(code[tmp_data_addr][0]):
-                        mark_handled(tmp_data_addr, 0, "D")
-                #End of fix
+                # mark_handled(tmp_data_addr, 2, "D")
                 if is_in_code(tmp_data_addr):
                 # if (tmp_data_addr >= code_org) and (
                 #     tmp_data_addr <= code_org + len(bin_data)
                 # ):
-                    # ld_label=f'{identified(handle_data(b))}_{handle_data(b):X}'
                     ld_label = lookup_label(handle_data(b))
+                    # print("---->",hex(program_counter),ld_label,hex(handle_data(b)),code[handle_data(b)][2])
                     labelled = tmp.replace(
                         tmp_addr, ld_label
                     )  # Convert inline hex to L_xxxx label
+                    # print(labelled)
                 else:
-                    labelled = tmp
+                    labelled = process_hextype(tmp)
                 str_for_comment = ""
                 if data_addr in labels:
                     if handle_data(b) in str_locations:
                         str_for_comment = (
                             " - References: " + str_locations[handle_data(b)]
                         )
+                # if commentlevel==0:
+                #     code_output(
+                #         program_counter,
+                #         labelled,
+                #         list_address,
+                #         "", #explain.code(labelled,explainlevel) + " " + str_for_comment,
+                #         add_extra_info(decode_buffer),
+                #     )
+                # else:
+                #     code_output(
+                #         program_counter,
+                #         labelled,
+                #         list_address,
+                #         explain.code(labelled,explainlevel) + " " + str_for_comment,
+                #         add_extra_info(decode_buffer),
+                #     )
                 program_counter += b.len
+
+            # data_addr = handle_data(b)
+            # if data_addr is None:  # So something like LD A,(BC) or LD A,B
+            #     program_counter += b.len
+            # else:
+            #     tmp = z80.disasm(b)
+            #     tmp_data_addr = handle_data(b)
+            #     tmp_addr = hex(handle_data(b))
+            #     if is_in_code(tmp_data_addr):
+            #         #We only want to mess with strings, ignore all previous instructions
+            #         if code[tmp_data_addr][1]=="S" and is_terminator(code[tmp_data_addr][0]):
+            #             mark_handled(tmp_data_addr, 0, "D")
+            #     #End of fix
+            #     if is_in_code(tmp_data_addr):
+            #     # if (tmp_data_addr >= code_org) and (
+            #     #     tmp_data_addr <= code_org + len(bin_data)
+            #     # ):
+            #         # ld_label=f'{identified(handle_data(b))}_{handle_data(b):X}'
+            #         ld_label = lookup_label(handle_data(b))
+            #         labelled = tmp.replace(
+            #             tmp_addr, ld_label
+            #         )  # Convert inline hex to L_xxxx label
+            #     else:
+            #         labelled = tmp
+            #     str_for_comment = ""
+            #     if data_addr in labels:
+            #         if handle_data(b) in str_locations:
+            #             str_for_comment = (
+            #                 " - References: " + str_locations[handle_data(b)]
+            #             )
+            #     program_counter += b.len
         else:
             program_counter += b.len
     else:
@@ -1278,7 +1360,6 @@ for loop in range(min(code),max(code)):
     if code[loop][1]=="S" and code[loop][0]<32 and not is_terminator(code[loop][0]):
         code[loop][1]="D"
 
-
 print("\nPass 5: Produce final listing")
 #Move temp labels into the main labels for output
 #Finalise the labelling
@@ -1289,7 +1370,23 @@ for loop in range(min(code),max(code)):
     code[loop][2]=code[loop][3]
     if code[loop][1]=="S" and code[loop][0]<32 and not is_terminator(code[loop][0]):
         code[loop][1]="D"
+# Print the used external EQUs (with nice formatting)
+# First find the longest label
+maxlen=0
+for loop in extern_labels:
+    debug(f'{extern_labels[loop][0]} called {extern_labels[loop][1]} times')
+    if extern_labels[loop][1]>0:
+        if len(extern_labels[loop][0])>maxlen:
+            maxlen=len(extern_labels[loop][0])
+        # print(f'{extern_labels[loop][0]} equ {hex(loop)}')
 
+do_write("; Define labels for external calls")
+# Now print the labels.
+for loop in extern_labels:
+    if extern_labels[loop][1]>0:
+        do_write(f'{extern_labels[loop][0].ljust(maxlen)} equ {hex(loop)}')
+do_write("\n\n")
+# Print the org statement
 program_counter=min(code)
 if args.style == "asm":
     do_write(f"    org {hexstyle}{code_org:x}\n")
@@ -1404,10 +1501,10 @@ while program_counter < max(code):
                     # print("------>>>> 4")
                     # Causing issues with some string endings
                     #No terminator, just dump the string
-                    # print("-->", hex(program_counter),b)
-                    code_output(orig,f'DEFB {b}"',list_address,f'{addcomment}{hexstyle}{orig:x} to {hexstyle}{orig+len(a)-2:x}')
+                    # print("-->", hex(program_counter),b,a)
+                    code_output(orig,f'DEFB {a}',list_address,f'{addcomment}{hexstyle}{orig:x} to {hexstyle}{orig+len(a)-2:x}')
                     # print(f'Bump 2 {hex(program_counter)}-->{hex(program_counter+len(a)-2)}')
-                    program_counter += len(a)-2
+                    program_counter += 1 #len(a)-1
                     # program_counter=program_counter+len(b)
                     # str_locations[program_counter]
                 else:
@@ -1548,7 +1645,7 @@ while program_counter < max(code):
                 )
             )
             if labelname[0]!="0":
-                out_tmp=f"Pointer to {labelname}"
+                out_tmp=f"Pointer to {labelname} ({hex(tmp)})"
             #BUG: Causes defb 01 01 on -c 0
             if commentlevel==0:
                 out_tmp="; "+out_tmp
@@ -1641,6 +1738,11 @@ while program_counter < max(code):
                 )
                 program_counter += b.len
             else:
+                debug(f'{hex(data_addr)} = {(data_addr in printed_labels)}')
+                if data_addr in printed_labels:
+                    tmp = z80.disasm(b).replace(f'0x{data_addr:04x}',lookup_label(data_addr,1))
+                else:
+                    tmp = z80.disasm(b).replace(f'0x{data_addr:04x}',lookup_label(data_addr,1))
                 tmp = z80.disasm(b).replace(f'0x{data_addr:04x}',lookup_label(data_addr,1))
                 tmp_data_addr = handle_data(b)
                 tmp_addr = hex(handle_data(b))

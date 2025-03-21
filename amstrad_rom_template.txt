@@ -13,12 +13,12 @@
 ;
 ; This is an example template for an Amstrad RODOS rom.
 ;
+
 ; Standard start of rom things
 0xc000,0xc000,b,ROM_TYPE
 0xc001,0xc001,b,ROM_MAJOR
 0xc002,0xc002,b,ROM_MARK
 0xc003,0xc003,b,ROM_MOD
-0xc3e6,0xc3e6,w,EXEC_RSX_CMD
 
 ;Now tag the pointer to the command names table
 0xc004,0xc004,p,CMD_TABLE_PTR
