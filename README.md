@@ -202,8 +202,7 @@ This is used by adding `--labels LABELSFILE` to the command line.
 
 A label file allows external calls, such as BIOS entry points, to be defined and used in disassembled code. I've included `amstrad-labels.txt` in this repository as an example and for convenience.
 
-The disassembler tracks what labels have been used during disassembly and will only add the labels that were used to the final disassembly.
-
+You can also add custom code labels in this file, such as those for RSX jump points.
 
 This is defined as follows:
 
