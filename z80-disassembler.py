@@ -321,11 +321,17 @@ def load_labels(filename):
                     if len(parsed)==3:
                         lname=parsed[0]
                         addr=to_number(parsed[2])
-                        # [0] = labelname
-                        # [1] = number of times it's called
-                        if lname[0]!=";":
+                        # print(lname,hex(addr))
+                        # print("code=",hex(min(code)),hex(max(code)))
+                        if lname[0]!=";" and is_in_code(addr):
+                            # print("in code",hex(addr))
+                            # update_label_name(addr,"C")
+                            code[addr][2]=lname
+                            # print("Lookup:",lookup_label(addr))
+                        elif lname[0]!=";":
                             extern_labels[addr].append(lname)
                             extern_labels[addr].append(0)
+                            # print(hex(addr),is_in_code(addr))
     except OSError:
         print("Error: Could not open labels file:", filename)
         sys.exit(1)
@@ -625,8 +631,8 @@ def validate_arguments(argslist):
     explainlevel=to_number(args.explainlevel)
     stay_in_code=args.stay_in_code
 
-    if args.labelsfile:
-        load_labels(args.labelsfile)
+    # if args.labelsfile:
+    #     load_labels(args.labelsfile)
 
     if args.assembler=="z80asm":
         args.labeltype=2
@@ -801,6 +807,8 @@ def lookup_label(addr, prettyprint=""):
     Returns:
         Formatted String
     """
+    # if addr==0xccd1:
+    #     print(code[addr])
     if not is_in_code(addr):
         debug("-->Not in code")
         if addr in extern_labels:
@@ -1146,6 +1154,7 @@ start = 0
 end = endaddress
 findstring(start, end)
 
+
 # dump_code_array("Post pass 2",0xd8dc)
 # for data_area in id_sort:
 #     print(hex(data_area))
@@ -1372,6 +1381,9 @@ for loop in range(min(code),max(code)):
         code[loop][1]="D"
 # Print the used external EQUs (with nice formatting)
 # First find the longest label
+if args.labelsfile:
+    load_labels(args.labelsfile)
+
 maxlen=0
 for loop in extern_labels:
     debug(f'{extern_labels[loop][0]} called {extern_labels[loop][1]} times')
@@ -1713,6 +1725,7 @@ while program_counter < max(code):
                 this_opcode = b.op.name
                 if len(z80.disasm(b).split(",")) > 1:  # conditional jumps and calls
                     this_opcode = z80.disasm(b).split(",")[0] + ","
+                # print("jp:",hex(jump_addr),lookup_label(jump_addr))
                 tmp = f"{this_opcode} " + lookup_label(jump_addr)
                 code_output(
                     program_counter,
