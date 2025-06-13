@@ -327,6 +327,8 @@ def load_labels(filename):
                             # print("in code",hex(addr))
                             # update_label_name(addr,"C")
                             code[addr][2]=lname
+                            code[addr][3]=lname #Overwrite string defs
+                            template_labels[addr]=lname #and template label
                             # print("Lookup:",lookup_label(addr))
                         elif lname[0]!=";":
                             extern_labels[addr].append(lname)
@@ -807,8 +809,6 @@ def lookup_label(addr, prettyprint=""):
     Returns:
         Formatted String
     """
-    # if addr==0xccd1:
-    #     print(code[addr])
     if not is_in_code(addr):
         debug("-->Not in code")
         if addr in extern_labels:
@@ -1421,11 +1421,11 @@ while program_counter < max(code):
         if (program_counter in template_labels):
             labelname=template_labels[program_counter]
             # if labelname[0]=="0":
-            #     print("1 used")
+            # print("1 used")
         else:
             labelname=lookup_label(program_counter,1)
             # if labelname[0]=="0":
-            #     print("2 used")
+            # print("2 used")
 
         if code[program_counter][1]=="C":
             stats_c_labels=stats_c_labels+1
@@ -1447,6 +1447,7 @@ while program_counter < max(code):
                 for tmp in labels[program_counter]:
                     tmp_str=tmp_str+f'{hexstyle}{tmp:X} '
             do_write(tmp_str)
+
         else:
             do_write(
                 ";----------------------------------------------------------------------------"
