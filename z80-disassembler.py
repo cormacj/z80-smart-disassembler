@@ -450,6 +450,9 @@ def to_number(n):
             return int('0x' + n, 0)
         except Exception:
             return float(n)
+        finally:
+            print("\n\nError occured. Invalid number: ",n)
+            exit(1)
 
 def parse_arguments():
     """
@@ -1188,18 +1191,22 @@ while loc <= max(code):
 # dump_code_array()
 
 print("\nPass 4: Validate labels")
+"""
+This pass is functionally the same as for pass 5, mostly to build the final labels.
+No code is output.
+"""
 code_snapshot = bytearray(8)
 loc = 0
 
 # dump_code_array()
-
+print("Loading template file...",end="")
 if args.templatefile is not None:
     process_template(args.templatefile)
+print(" Done!",end="")
+if args.quiet:
+    print("\n")
 
 
-# This is nearly the final assembly.
-# In this pass I'm building the final labels but not outputting code
-# dump_code_array()
 program_counter=min(code)
 print_progress_bar(program_counter-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
 
@@ -1275,23 +1282,12 @@ while program_counter < max(code):
             data_addr = handle_data(b)
             if data_addr is None:  # So something like LD A,(BC) or LD A,B
                 tmp=process_hextype(z80.disasm(b))
-                # code_output(
-                #     program_counter,
-                #     tmp,
-                #     list_address,
-                #     explain.code(z80.disasm(b),explainlevel),
-                #     add_extra_info(decode_buffer),
-                # )
                 program_counter += b.len
             else:
                 tmp = z80.disasm(b).replace(f'0x{data_addr:04x}',lookup_label(data_addr,1))
                 tmp_data_addr = handle_data(b)
                 tmp_addr = hex(handle_data(b))
-                # mark_handled(tmp_data_addr, 2, "D")
                 if is_in_code(tmp_data_addr):
-                # if (tmp_data_addr >= code_org) and (
-                #     tmp_data_addr <= code_org + len(bin_data)
-                # ):
                     ld_label = lookup_label(handle_data(b))
                     # print("---->",hex(program_counter),ld_label,hex(handle_data(b)),code[handle_data(b)][2])
                     labelled = tmp.replace(
@@ -1306,54 +1302,8 @@ while program_counter < max(code):
                         str_for_comment = (
                             " - References: " + str_locations[handle_data(b)]
                         )
-                # if commentlevel==0:
-                #     code_output(
-                #         program_counter,
-                #         labelled,
-                #         list_address,
-                #         "", #explain.code(labelled,explainlevel) + " " + str_for_comment,
-                #         add_extra_info(decode_buffer),
-                #     )
-                # else:
-                #     code_output(
-                #         program_counter,
-                #         labelled,
-                #         list_address,
-                #         explain.code(labelled,explainlevel) + " " + str_for_comment,
-                #         add_extra_info(decode_buffer),
-                #     )
                 program_counter += b.len
 
-            # data_addr = handle_data(b)
-            # if data_addr is None:  # So something like LD A,(BC) or LD A,B
-            #     program_counter += b.len
-            # else:
-            #     tmp = z80.disasm(b)
-            #     tmp_data_addr = handle_data(b)
-            #     tmp_addr = hex(handle_data(b))
-            #     if is_in_code(tmp_data_addr):
-            #         #We only want to mess with strings, ignore all previous instructions
-            #         if code[tmp_data_addr][1]=="S" and is_terminator(code[tmp_data_addr][0]):
-            #             mark_handled(tmp_data_addr, 0, "D")
-            #     #End of fix
-            #     if is_in_code(tmp_data_addr):
-            #     # if (tmp_data_addr >= code_org) and (
-            #     #     tmp_data_addr <= code_org + len(bin_data)
-            #     # ):
-            #         # ld_label=f'{identified(handle_data(b))}_{handle_data(b):X}'
-            #         ld_label = lookup_label(handle_data(b))
-            #         labelled = tmp.replace(
-            #             tmp_addr, ld_label
-            #         )  # Convert inline hex to L_xxxx label
-            #     else:
-            #         labelled = tmp
-            #     str_for_comment = ""
-            #     if data_addr in labels:
-            #         if handle_data(b) in str_locations:
-            #             str_for_comment = (
-            #                 " - References: " + str_locations[handle_data(b)]
-            #             )
-            #     program_counter += b.len
         else:
             program_counter += b.len
     else:
@@ -1381,8 +1331,13 @@ for loop in range(min(code),max(code)):
         code[loop][1]="D"
 # Print the used external EQUs (with nice formatting)
 # First find the longest label
+
+print("Loading labels file... ",end="")
 if args.labelsfile:
     load_labels(args.labelsfile)
+print("Done!",end="")
+if args.quiet:
+    print("\n")
 
 maxlen=0
 for loop in extern_labels:
@@ -1814,7 +1769,7 @@ while program_counter < max(code):
 print_progress_bar(max(code), max(code),prefix='    Progress:', suffix='Complete', length=50)
 print()
 if args.outfile:
-    print(args.outfile," created!")
+    print(f"\n{args.outfile} created!")
 
 print()
 print("Lines of code:",stats_loc)
