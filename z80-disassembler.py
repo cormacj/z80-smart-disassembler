@@ -1199,12 +1199,12 @@ code_snapshot = bytearray(8)
 loc = 0
 
 # dump_code_array()
-print("Loading template file...",end="")
 if args.templatefile is not None:
+    print(f"Loading template file: {args.templatefile}...",end="")
     process_template(args.templatefile)
-print(" Done!",end="")
-if args.quiet:
-    print("\n")
+    print(" Done!",end="")
+    if args.quiet:
+        print("\n")
 
 
 program_counter=min(code)
@@ -1332,12 +1332,12 @@ for loop in range(min(code),max(code)):
 # Print the used external EQUs (with nice formatting)
 # First find the longest label
 
-print("Loading labels file... ",end="")
 if args.labelsfile:
+    print(f"Loading labels file: {args.labelsfile}... ",end="")
     load_labels(args.labelsfile)
-print("Done!",end="")
-if args.quiet:
-    print("\n")
+    print("Done!",end="")
+    if args.quiet:
+        print("\n")
 
 maxlen=0
 for loop in extern_labels:
