@@ -90,7 +90,7 @@ str_locations = {}
 str_sizes = {}
 style = "asm"
 hexstyle = "0x"
-myversion = "0.85"
+myversion = "0.87"
 
 
 #--- Debugging functions ---
