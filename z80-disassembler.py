@@ -188,25 +188,44 @@ def process_hextype(hexaddr):
         return hexaddr.replace("0x","#")
     return hexaddr
 
-def build_strings_from_binary_data(binary_data):
-    strings = []
-    current_string = []
+# def build_strings_from_binary_data(binary_data):
+#     strings = []
+#     current_string = []
+#
+#     for byte in binary_data:
+#         if is_alphanumeric(byte):
+#             current_string.append(chr(byte))
+#         elif is_terminator(byte):
+#             if current_string:
+#                 current_string.append(decode_terminator(byte))
+#                 strings.append(''.join(current_string))
+#                 current_string = []
+#
+#     # Append the last string if it exists
+#     if current_string:
+#         strings.append(''.join(current_string))
+#
+#     # return strings
+#     return (''.join(strings))
 
-    for byte in binary_data:
-        if is_alphanumeric(byte):
-            current_string.append(chr(byte))
-        elif is_terminator(byte):
-            if current_string:
-                current_string.append(decode_terminator(byte))
-                strings.append(''.join(current_string))
-                current_string = []
 
-    # Append the last string if it exists
-    if current_string:
-        strings.append(''.join(current_string))
+def build_strings_from_binary_data(binary_data, min_length=3):
+    """
+    Searches binary data for ASCII strings of at least min_length and returns a list of found strings.
 
-    # return strings
-    return (''.join(strings))
+    Args:
+        binary_data (bytes): The binary data to search.
+        min_length (int): The minimum length of ASCII string to find. Default is 4.
+
+    Returns:
+        list[str]: List of ASCII strings found in the binary data.
+    """
+    # Regular expression to match runs of printable ASCII characters
+    # print(f"\n{len(binary_data)}")
+    pattern = rb'[\x20-\x7E]{%d,}' % min_length
+    matches = re.findall(pattern, binary_data)
+    # Decode bytes to string, ignoring errors
+    return [m.decode('ascii', errors='ignore') for m in matches]
 
 def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill='█', print_end="\r"):
     """
@@ -1465,7 +1484,7 @@ while program_counter < max(code):
                     # print("3")
                     # found terminator, output it
                     # known_string=f'DEFB {b}{decode_terminator(code[m][0])}'
-                    code_output(orig,f'x1 DEFB {b}{decode_terminator(code[m][0])}',list_address,f'{addcomment}{hexstyle}{orig:x} to {hexstyle}{(orig+len(a)+1):x}')
+                    code_output(orig,f'DEFB {b}{decode_terminator(code[m][0])}',list_address,f'{addcomment}{hexstyle}{orig:x} to {hexstyle}{(orig+len(a)+1):x}')
                     # print(f'Bump 1 {hex(program_counter)}-->{hex(program_counter+len(a)-1)}')
                     program_counter += len(a)-1
                 elif identified(m)=="S" and not is_terminator(code[m][0]):
@@ -1473,14 +1492,14 @@ while program_counter < max(code):
                     # Causing issues with some string endings
                     #No terminator, just dump the string
                     # print("-->", hex(program_counter),b,a)
-                    code_output(orig,f'x2 DEFB {a}',list_address,f'{addcomment}{hexstyle}{orig:x} to {hexstyle}{orig+len(a)-2:x}')
+                    code_output(orig,f'DEFB {a}',list_address,f'{addcomment}{hexstyle}{orig:x} to {hexstyle}{orig+len(a)-2:x}')
                     # print(f'Bump 2 {hex(program_counter)}-->{hex(program_counter+len(a)-2)}')
                     program_counter += len(a)-1
                     # program_counter=program_counter+len(b)
                     # str_locations[program_counter]
                 else:
                     # print("5")
-                    code_output(orig,f'x3 DEFB "{d}',list_address,f'{addcomment}{hexstyle}{orig:x} to {hexstyle}{orig+len(a)-2:x}')
+                    code_output(orig,f'DEFB "{d}',list_address,f'{addcomment}{hexstyle}{orig:x} to {hexstyle}{orig+len(a)-2:x}')
                     # print(f'Bump 3 {hex(program_counter)}-->{hex(program_counter+len(a)-2)}')
                     program_counter += len(a)-2
                     # print(hex(program_counter))
@@ -1513,11 +1532,11 @@ while program_counter < max(code):
                 cnt=program_counter
             result=build_strings_from_binary_data(tmp_array)
             # print("-->",result)
+            # print(f"{len(result)}")
             # result=result.replace('"', '",34,"').replace("\\", '", 0x5c, "')
             # print("---->",result,code[src_array_index][1],---code[src_array_index][2],"\n")
             # program_counter=program_counter+len(result)
             str_len=len(result)
-            result=result.replace('"', '",34,"').replace("\\", '", 0x5c, "')
             # print("-->",result,(identified(program_counter) == "S"),is_terminator(code[program_counter][0]))
             # dump_code_array("-- term -->",program_counter,)
             # print("-->",result)
@@ -1525,7 +1544,8 @@ while program_counter < max(code):
             #FIXME: Something in here is breaking labels after a string, probably one of the increments
             # So its adding code area to the string if the string isn't terminated, but the area is marked as code.
             # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            if result!="":
+            if str_len>0:
+                result=result[0].replace('"', '",34,"').replace("\\", '", 0x5c, "')
                 # if  0xf77b < program_counter < 0xf79c:
                 #     print("----> 1-",hex(program_counter),identified(program_counter))
                 # program_counter=program_counter+str_len
@@ -1535,31 +1555,34 @@ while program_counter < max(code):
                     else:
                         addcomment=""
 
-                    code_output(program_counter,f'x4 DEFB "{result}{decode_terminator(code[program_counter+str_len][0])}',list_address,f'{addcomment}{hexstyle}{program_counter:x} to {hexstyle}{(program_counter+str_len+1):x}')
+                    code_output(program_counter,f'DEFB "{result}{decode_terminator(code[program_counter+str_len][0])}',list_address,f'{addcomment}{hexstyle}{program_counter:x} to {hexstyle}{(program_counter+str_len):x}')
                     # Bump for terminator
                     # print(f'Bump 4 {hex(program_counter)}-->{hex(program_counter+str_len)}')
-                    program_counter +=str_len+1
+                    program_counter +=len(result)+1
                 else:
                     #Probably never called, but better safe etc etc
-                    code_output(program_counter,f'x5 DEFB "{result}"',list_address)
+                    code_output(program_counter,f'DEFB "{result}"',list_address)
             elif (identified(program_counter) == "S") and (code[program_counter][0]>0x80) and not is_terminator(code[program_counter][0]):
                 # if  0xf77b < program_counter < 0xf79c:
                 #     print("----> 2 -",hex(program_counter),identified(program_counter))
                 #Issue #30: This is part of the issue, but not sure why yet.
-                result=result+decode_terminator(code[program_counter][0]).replace('",',"")
-                code_output(program_counter-str_len,f'x6 DEFB {result}',list_address)
+                # result=result+decode_terminator(code[program_counter][0]).replace('",',"")
+
+                result=hex(code[program_counter][0])
+
+                code_output(program_counter-str_len,f'DEFB {result}',list_address)
                 # print(f'Bump 5 {hex(program_counter)}-->{hex(program_counter+1)}')
                 program_counter +=1 #str_len
             else:
                 # print("----> 3 -",hex(program_counter),identified(program_counter))
-                code_output(program_counter-str_len,f'x7 DEFB {hexstyle}{(code[program_counter][0]):x}',list_address)
+                code_output(program_counter-str_len,f'DEFB {hexstyle}{(code[program_counter][0]):x}',list_address)
                 # print(f'Bump 6 {hex(program_counter)}-->{hex(program_counter+1)}')
                 program_counter +=1
     # elif identified(program_counter) == "D" and (program_counter in str_locations) and not stay_in_code:
     elif identified(program_counter) == "D" and (program_counter in str_locations):
         #Its a string!
         code_output(
-            program_counter, "x8 DEFB " + str_locations[program_counter], list_address
+            program_counter, "DEFB " + str_locations[program_counter], list_address
         )
         # print(f'Bump 7 {hex(program_counter)}-->{hex(program_counter+str_sizes[program_counter])}')
         program_counter += str_sizes[program_counter]
@@ -1581,7 +1604,7 @@ while program_counter < max(code):
             #BUG: Causes defb 01 01 on -c 0
             if commentlevel==0:
                 out_tmp="; "+out_tmp
-            code_output(program_counter, f"x9 DEFB {hexstyle}{tmp:x}", list_address, f'{out_tmp}')
+            code_output(program_counter, f"DEFB {hexstyle}{tmp:x}", list_address, f'{out_tmp}')
             # debug("PC Bump")
             program_counter += 1 #FIXME - tripping PC too much?
     elif identified(program_counter) == "Dw":
