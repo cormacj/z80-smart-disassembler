@@ -702,9 +702,9 @@ def code_output(address, code, display_address, comment="", added_details=""):
         case 0:
             output=f"    {code}"
         case 1:
-            output=f"    {code:25}  ;{addr}"
+            output=f"    {code:32}  ;{addr}"
         case 2:
-            output=f"    {code:25}  ;{addr} {added_details}"
+            output=f"    {code:32}  ;{addr} {added_details}"
 
     if args.style == "asm":
         do_write(f"{output} {comment}")
@@ -961,7 +961,7 @@ def print_label(addr):
                 do_write(";--------------------------------------")
                 do_write()
                 # print(f'{lookup_label(loc + code_org)}_{loc + code_org:X}:'+f'{" ":23} ; {" ":8}' , end='XREF=')
-                tmp_str=f'{labelname:30} ; {" ":8} {xrefstr}'
+                tmp_str=f'{labelname:40} ; {" ":8} {xrefstr}'
                 # print(labels)
                 if args.xref == "on":
                     for tmp in labels[program_counter]:
@@ -1419,7 +1419,7 @@ while program_counter < max(code):
             # do_write()
             # print(f'{lookup_label(loc + code_org)}_{loc + code_org:X}:'+f'{" ":23} ; {" ":8}' , end='XREF=')
 
-            tmp_str=f'{tmpl:30} ; {" ":8} {xrefstr}'
+            tmp_str=f'{tmpl:37} ; {xrefstr}'
             if args.xref == "on":
                 for tmp in labels[program_counter]:
                     tmp_str=tmp_str+f'{hexstyle}{tmp:X} '
