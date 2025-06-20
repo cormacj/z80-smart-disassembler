@@ -1151,7 +1151,7 @@ while loc <= end_of_code:
         # else:
         #     relative_correction=0
         # print("jump:",jump_addr)
-        if (jump_addr and jump_addr not in labels):  # Its a jump, but area is already data
+        if (jump_addr and (jump_addr not in labels)):  # Its a jump, but area is already data
             # if jump_addr==0xd8dc:
             # print("----> Mark Handled",hex(jump_addr))
 
@@ -1219,7 +1219,7 @@ code_snapshot = bytearray(8)
 loc = 0
 
 if args.labelsfile:
-    print(f"Loading labels file: {args.labelsfile}... ",end="")
+    print(f"\n    Loading labels file: {args.labelsfile}... ",end="")
     load_labels(args.labelsfile)
     print("Done!",end="")
     if args.quiet:
@@ -1227,9 +1227,9 @@ if args.labelsfile:
 
 # dump_code_array()
 if args.templatefile is not None:
-    print(f"Loading template file: {args.templatefile}...",end="")
+    print(f"\n    Loading template file: {args.templatefile}...",end="")
     process_template(args.templatefile)
-    print(" Done!",end="")
+    print(" Done!")
     if args.quiet:
         print("\n")
 
@@ -1676,7 +1676,10 @@ while program_counter < max(code):
                     # if its positive
                     tmp=f"{this_opcode} ${oper}{handle_jump(b,program_counter,True)} "
                 else:
-                    tmp = f"{this_opcode} " + lookup_label(jump_addr)
+                    if "," in this_opcode: # Fixup for JR nz, ADDR so this removes the space if it's a conditional JR
+                        tmp = f"{this_opcode}" + lookup_label(jump_addr)
+                    else:
+                        tmp = f"{this_opcode} " + lookup_label(jump_addr)
                 code_output(
                     program_counter,
                     tmp,
