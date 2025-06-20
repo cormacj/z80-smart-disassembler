@@ -367,7 +367,9 @@ S_109:                         ;
 ```
 # Known Issues
 * The disassembler can generate references to labels that don't exist
+* Some labels are generated, but never called.
 * String detection fails oddly towards the end of a ROM and maybe elsewhere, so use the `generate_string_locations.sh` helper script to make a template if this happens.
+* Some code that gets moved around using LDIR won't get properly decoded, because the disassembler doesn't know if its data or code. The recommended workaround is to tell the disassembler what to do using the template options, eg `0xc300,0xc309,c,RELOCATE_BUILTIN_MSG`. This that cause the disassembler treats the data between 0xc300 and 0xc309 as code and assigns the label `RELOCATE_BUILTIN_MSG`
 
 # ToDo
 
