@@ -90,7 +90,7 @@ str_locations = {}
 str_sizes = {}
 style = "asm"
 hexstyle = "0x"
-myversion = "0.89"
+myversion = "0.90"
 
 
 #--- Debugging functions ---
@@ -434,16 +434,16 @@ def process_template(filename):
                             #         print(loop)
                             #     mark_handled(addr,1,"D")
                             case "b":
-                                mark_handled(addr,2,"Db")
+                                mark_handled(addr,1,"Db")
                             case "w":
-                                mark_handled(addr,2,"Dw")
+                                mark_handled(addr,1,"Dw")
                             case "c":
                                 # print("Code:",hex(begin),hex(end))
                                 for loop in range(begin,end):
                                     mark_handled(loop,1,"C")
                                 mark_handled(addr,3,"C")
                             case "p":
-                                mark_handled(addr,2,"Dw")
+                                mark_handled(addr,2,"Dp")
                                 code_loc=begin #Get the address where the pointer is pointing to
                                 # mark_handled(code_loc,2,"Dw")
                             case "s":
@@ -778,6 +778,8 @@ def type_lookup(datatype):
         case "Db":
             return "data"
         case "Dw":
+            return "data"
+        case "Dp":
             return "data"
         case "C":
             return "code"
@@ -1269,7 +1271,7 @@ while program_counter < max(code):
                 )
             )
             program_counter += 1
-    elif identified(program_counter) == "Dw":
+    elif identified(program_counter) == "Dp":
         if is_in_code(program_counter):
             tmp = get_from_code(program_counter,0) #code[loc][0]
             out_tmp = (
@@ -1608,6 +1610,32 @@ while program_counter < max(code):
             # debug("PC Bump")
             program_counter += 1 #FIXME - tripping PC too much?
     elif identified(program_counter) == "Dw":
+        if is_in_code(program_counter):
+            tmpl = get_from_code(program_counter,0) #Low byte
+            tmph = get_from_code(program_counter+1,0) # High byte
+            tmp = (tmph*0x100)+tmpl #make it a word
+            out_tmp=""
+            # print(f'\n\n{hex(tmp)}\n')
+            # out_tmp = (
+            #     f'"{chr(tmpl)}"'
+            #     if 31 < tmpl < 127
+            #     else (
+            #         f"('{chr(tmpl - 0x80)}') + {hexstyle}80" if 31 < (tmpl - 0x80) < 127 else hex(tmpl)
+            #     )
+            # )
+            # out_tmp = out_tmp+" "+(
+            #     f'"{chr(tmph)}"'
+            #     if 31 < tmph < 127
+            #     else (
+            #         f"('{chr(tmph - 0x80)}') + {hexstyle}80" if 31 < (tmph - 0x80) < 127 else hex(tmph)
+            #     )
+            # )
+            if commentlevel==0:
+                out_tmp="; "+out_tmp
+
+            code_output(program_counter, f"DEFB {hexstyle}{tmp:x}", list_address, f'{out_tmp}')
+            program_counter += 2
+    elif identified(program_counter) == "Dp":
         # dump_code_array("---->",program_counter)
 
         # debug("D2 - 2")
@@ -1615,7 +1643,7 @@ while program_counter < max(code):
             # debug("D - 3")
             tmpl = get_from_code(program_counter,0) #Low byte
             tmph = get_from_code(program_counter+1,0) #High byte
-            tmp=((tmph*256)+tmpl) #make it a word
+            tmp=((tmph*0x100)+tmpl) #make it a word
             if (tmp in labels) or (tmp in template_labels):
                 if (tmp in template_labels):
                     labelname=template_labels[tmp]
@@ -1657,7 +1685,6 @@ while program_counter < max(code):
             # debug("C - 1a")
             # debug("Processing relative jump")
             jump_addr = handle_jump(b, program_counter)
-            # print(hex(jump_addr),lookup_label(jump_addr))
             djnz_addr=lookup_label(jump_addr)
             this_opcode = b.op.name
             if len(z80.disasm(b).split(",")) > 1:  # conditional jumps and calls
@@ -1675,6 +1702,9 @@ while program_counter < max(code):
                     # where $ is the current location, so this code adds the operator
                     # if its positive
                     tmp=f"{this_opcode} ${oper}{handle_jump(b,program_counter,True)} "
+                    # if program_counter>0xc840 and program_counter<0xc862:
+                    #     print(f'{hex(program_counter)}: {hex(jump_addr)} -> {lookup_label(jump_addr)}, opcode={z80.disasm(b)} --> {tmp}  {handle_jump(b,program_counter,True)} {hex(handle_jump(b,program_counter))} lookup: {lookup_label(jump_addr)} or {lookup_label(handle_jump(b,program_counter))}')
+
                 else:
                     if "," in this_opcode: # Fixup for JR nz, ADDR so this removes the space if it's a conditional JR
                         tmp = f"{this_opcode}" + lookup_label(jump_addr)

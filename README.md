@@ -236,13 +236,11 @@ A template file is a standard text file. The format for the file is as follows:
     `start address, end address, data type, label`
 
   data types can be one of these:<br>
-    b = byte *<br>
+    b = byte <br>
     w = word<br>
     s = string<br>
     c = code<br>
     p = pointer<br>
-
-        * = still to be implimented
 
   You can refer to a pointer by enclosing the address in (). When the disassembler sees this, it looks at the word at the pointer location and uses that value instead.
 
