@@ -90,7 +90,7 @@ str_locations = {}
 str_sizes = {}
 style = "asm"
 hexstyle = "0x"
-myversion = "0.87"
+myversion = "0.89"
 
 
 #--- Debugging functions ---
@@ -1722,6 +1722,17 @@ while program_counter < max(code):
                 )
                 program_counter += b.len
             else:
+                #It's something like JP (IY)
+                tmp=z80.disasm(b)
+                if "+0)" in tmp:
+                    tmp=tmp.split("+0)")[0]+")" #The code library produces a JP (IY+0) which while techically ok, isn't understood by many assemblers.
+                code_output(
+                    program_counter,
+                    tmp,
+                    list_address,
+                    explain.code(z80.disasm(b),explainlevel),
+                    add_extra_info(decode_buffer),
+                )
                 program_counter += b.len
         elif b.op is b.op.LD:  # and b.operands[0][0] is not b.operands[0][0].REG_DEREF:
             # debug("C2 - 3")
