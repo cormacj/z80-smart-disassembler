@@ -331,12 +331,17 @@ def check_for_pointer(addr):
     return ptr
 
 def load_labels(filename):
+    ln=0
     try:
         with open(filename, mode ='r') as file:
             for lines in file:
+                ln=ln+1
                 #Lots, and lots of error checking
                 if lines.lower()[0]!=";" and lines!="":
                     parsed=lines.split()
+                    res=(lines=="")
+                    if len(parsed)<3 and len(lines)>1:
+                        print(f'\nInvalid line in {filename} at line {ln}: {lines}')
                     if len(parsed)==3:
                         lname=parsed[0]
                         addr=to_number(parsed[2])
@@ -388,70 +393,76 @@ def process_template(filename):
 
     try:
         with open(filename, mode ='r') as file:
+            ln=0
             csvFile = csv.reader(file)
             for lines in csvFile:
+                ln=ln+1
                 # print("-------------------------------------")
                 # print(f'->{lines}<-')
-                if (lines!=[]):
-                    if (lines[0][0]!=";"): #If not a comment or blank
-                        # print(lines)
-                        start_template=check_for_pointer(lines[0])
-                        if start_template.ispointer:
-                            begin=start_template.destination
-                            # print("is pointer",hex(begin))
-                        else:
-                            begin=start_template.source
-                            # print("NOT pointer",hex(begin))
+                try:
+                    if (lines!=[]):
+                        if (lines[0][0]!=";"): #If not a comment or blank
+                            # print(lines)
+                            start_template=check_for_pointer(lines[0])
+                            if start_template.ispointer:
+                                begin=start_template.destination
+                                # print("is pointer",hex(begin))
+                            else:
+                                begin=start_template.source
+                                # print("NOT pointer",hex(begin))
 
-                        # print("***start***",hex(start_template.source),hex(start_template.destination))
-                        end_template=check_for_pointer(lines[1])
-                        # print("***end***",hex(end_template.source),hex(end_template.destination))
-                        # Next check for pointers and assign addresses as needed.
-                        if end_template.ispointer:
-                            end=end_template.destination
-                        else:
-                            end=end_template.source
-                        # print("begin,end:",hex(begin),hex(end))
-                        datatype=lines[2]
-                        label=lines[3]
-                        debug(f'Tagging {label}: {hex(begin)}')
-                        # print(f'code_org={hex(code_org)}, begin={hex(begin)},len bin_data={hex(len(bin_data)+code_org)}')
-                        # print(code_org < begin)
-                        # print(begin < (len(bin_data)+code_org))
-                        # print(hex(endaddress))
-                        if not (code_org <= begin < (len(bin_data)+code_org)):
-                            print("\nError: Out of bounds address in template:")
-                            print(f"\t{lines[0]},{lines[1]},{lines[2]},{lines[3]}")
-                            sys.exit(1)
+                            # print("***start***",hex(start_template.source),hex(start_template.destination))
+                            end_template=check_for_pointer(lines[1])
+                            # print("***end***",hex(end_template.source),hex(end_template.destination))
+                            # Next check for pointers and assign addresses as needed.
+                            if end_template.ispointer:
+                                end=end_template.destination
+                            else:
+                                end=end_template.source
+                            # print("begin,end:",hex(begin),hex(end))
+                            datatype=lines[2]
+                            label=lines[3]
+                            debug(f'Tagging {label}: {hex(begin)}')
+                            # print(f'code_org={hex(code_org)}, begin={hex(begin)},len bin_data={hex(len(bin_data)+code_org)}')
+                            # print(code_org < begin)
+                            # print(begin < (len(bin_data)+code_org))
+                            # print(hex(endaddress))
+                            if not (code_org <= begin < (len(bin_data)+code_org)):
+                                print("\nError: Out of bounds address in template:")
+                                print(f"\t{lines[0]},{lines[1]},{lines[2]},{lines[3]}")
+                                sys.exit(1)
 
-                        code[begin][2]=label
-                        code[begin][3]=label
-                        template_labels[begin]=label
-                        addr=begin
-                        match datatype.lower():
-                            # case 'b':
-                            #     for loop in range(begin,end):
-                            #         print(loop)
-                            #     mark_handled(addr,1,"D")
-                            case "b":
-                                mark_handled(addr,1,"Db")
-                            case "w":
-                                mark_handled(addr,1,"Dw")
-                            case "c":
-                                # print("Code:",hex(begin),hex(end))
-                                for loop in range(begin,end):
-                                    mark_handled(loop,1,"C")
-                                mark_handled(addr,3,"C")
-                            case "p":
-                                mark_handled(addr,2,"Dp")
-                                code_loc=begin #Get the address where the pointer is pointing to
-                                # mark_handled(code_loc,2,"Dw")
-                            case "s":
-                                for loop in range(begin,end-1):
-                                    mark_handled(loop,1,"S")
-                            case _:
-                                print("Unknown data type: ",datatype.lower())
-                                exit
+                            code[begin][2]=label
+                            code[begin][3]=label
+                            template_labels[begin]=label
+                            addr=begin
+                            match datatype.lower():
+                                # case 'b':
+                                #     for loop in range(begin,end):
+                                #         print(loop)
+                                #     mark_handled(addr,1,"D")
+                                case "b":
+                                    mark_handled(addr,1,"Db")
+                                case "w":
+                                    mark_handled(addr,1,"Dw")
+                                case "c":
+                                    # print("Code:",hex(begin),hex(end))
+                                    for loop in range(begin,end):
+                                        mark_handled(loop,1,"C")
+                                    mark_handled(addr,3,"C")
+                                case "p":
+                                    mark_handled(addr,2,"Dp")
+                                    code_loc=begin #Get the address where the pointer is pointing to
+                                    # mark_handled(code_loc,2,"Dw")
+                                case "s":
+                                    for loop in range(begin,end-1):
+                                        mark_handled(loop,1,"S")
+                                case _:
+                                    print("Unknown data type: ",datatype.lower())
+                                    exit
+                except:
+                    print(f"\n\nError processing template file at line {ln}: {lines[0][0]}")
+                    sys.exit(1)
     except OSError:
         print("Error: Could not open template file:", filename)
         sys.exit(1)
@@ -1687,12 +1698,16 @@ while program_counter < max(code):
             jump_addr = handle_jump(b, program_counter)
             djnz_addr=lookup_label(jump_addr)
             this_opcode = b.op.name
+            if program_counter==0xceda:
+                print(f'{hex(program_counter)}, jump_addr={hex(jump_addr)}, djnz={djnz_addr}, op={z80.disasm(b)}')
+
             if len(z80.disasm(b).split(",")) > 1:  # conditional jumps and calls
                 this_opcode = z80.disasm(b).split(",")[0] + ","
             if jump_addr is not None:
                 if djnz_addr[0]=="0": # It's not a label, so we need to reformat
                     # print(b,f'\nja={hex(jump_addr)}, pc={hex(program_counter)} {program_counter-jump_addr} {handle_jump(b,program_counter,True)}')
-                    jump_addr=handle_jump(b,program_counter,True) # The True here requests just the relative offset, no adjusting
+                    # jump_addr=handle_jump(b,program_counter,True) # The True here requests just the relative offset, no adjusting
+                    # jump_addr=djnz_addr
                     if jump_addr>=0:
                         oper="+"
                     else:
@@ -1702,7 +1717,13 @@ while program_counter < max(code):
                     # where $ is the current location, so this code adds the operator
                     # if its positive
                     tmp=f"{this_opcode} ${oper}{handle_jump(b,program_counter,True)} "
-                    # if program_counter>0xc840 and program_counter<0xc862:
+                    # if program_counter==0xceda:
+                    #     print(f'{hex(program_counter)}, jump_addr={hex(jump_addr)}, djnz={djnz_addr}, op={z80.disasm(b)}')
+                    #     print("cur:",tmp)
+                    #     print("alt:",f"{this_opcode} {hex(handle_jump(b,program_counter))})")
+                    #     print("alt2:",f"{this_opcode} {lookup_label(handle_jump(b,program_counter))})"))
+                    #
+                    # # if program_counter>0xc840 and program_counter<0xc862:
                     #     print(f'{hex(program_counter)}: {hex(jump_addr)} -> {lookup_label(jump_addr)}, opcode={z80.disasm(b)} --> {tmp}  {handle_jump(b,program_counter,True)} {hex(handle_jump(b,program_counter))} lookup: {lookup_label(jump_addr)} or {lookup_label(handle_jump(b,program_counter))}')
 
                 else:
@@ -1719,6 +1740,7 @@ while program_counter < max(code):
                 )
                 program_counter += b.len
             else:
+                print(hex(program_counter),z80.disasm(b))
                 program_counter += b.len
         elif b.op is b.op.CP and b.operands[0][0]==b.operands[0][0].IMM:
             tmp=process_hextype(z80.disasm(b))
@@ -1742,7 +1764,12 @@ while program_counter < max(code):
                 if len(z80.disasm(b).split(",")) > 1:  # conditional jumps and calls
                     this_opcode = z80.disasm(b).split(",")[0] + ","
                 # print("jp:",hex(jump_addr),lookup_label(jump_addr))
-                tmp = f"{this_opcode} " + lookup_label(jump_addr)
+                # tmp = f"{this_opcode} " + lookup_label(jump_addr)
+                if "," in this_opcode: # Fixup for JR nz, ADDR so this removes the space if it's a conditional JR
+                    tmp = f"{this_opcode}" + lookup_label(jump_addr)
+                else:
+                    tmp = f"{this_opcode} " + lookup_label(jump_addr)
+
                 code_output(
                     program_counter,
                     tmp,
