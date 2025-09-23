@@ -1118,6 +1118,8 @@ print("\nPass 2: Search for strings")
 id_sort = sorted(identified_areas)
 start = 0
 end = endaddress
+
+# Enforce the stay_in_code by not looking for strings
 if not args.stay_in_code:
     findstring(start, end)
 
