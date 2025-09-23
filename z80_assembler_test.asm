@@ -2,7 +2,7 @@
 ; This program does NOT do anything useful at runtime.
 ; Its purpose is to exercise every Z80 instruction and syntax case.
 
-        ORG 0000h             ; Origin pseudo-op
+        ORG 0100h             ; Origin pseudo-op
 
 ; --- 8-bit Load ---
         LD A,0                ; Immediate
@@ -35,8 +35,8 @@
         LD HL,9ABCh
         LD SP,0FEDh
 
-        LD HL,(1000h)         ; Indirect
-        LD (1000h),HL
+        LD HL,(DATA_AREA)         ; Indirect
+        LD (DATA_AREA),HL
         LD DE,(2000h)
         LD (2000h),DE
         LD BC,(3000h)
@@ -328,6 +328,7 @@ LABEL_JR:
         LD I,A
         LD R,A
 
+DATA_AREA:
 ; --- Pseudo-ops and direct data ---
         DB 0x00,0xFF,0xAA
         DW 0x1234,0x5678

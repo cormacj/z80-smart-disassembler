@@ -90,7 +90,7 @@ str_locations = {}
 str_sizes = {}
 style = "asm"
 hexstyle = "0x"
-myversion = "0.90"
+myversion = "0.91"
 
 
 #--- Debugging functions ---
@@ -188,26 +188,6 @@ def process_hextype(hexaddr):
         return hexaddr.replace("0x","#")
     return hexaddr
 
-# def build_strings_from_binary_data(binary_data):
-#     strings = []
-#     current_string = []
-#
-#     for byte in binary_data:
-#         if is_alphanumeric(byte):
-#             current_string.append(chr(byte))
-#         elif is_terminator(byte):
-#             if current_string:
-#                 current_string.append(decode_terminator(byte))
-#                 strings.append(''.join(current_string))
-#                 current_string = []
-#
-#     # Append the last string if it exists
-#     if current_string:
-#         strings.append(''.join(current_string))
-#
-#     # return strings
-#     return (''.join(strings))
-
 
 def build_strings_from_binary_data(binary_data, min_length=3):
     """
@@ -221,9 +201,9 @@ def build_strings_from_binary_data(binary_data, min_length=3):
         list[str]: List of ASCII strings found in the binary data.
     """
     # Regular expression to match runs of printable ASCII characters
-    # print(f"\n{len(binary_data)}")
     pattern = rb'[\x20-\x7E]{%d,}' % min_length
     matches = re.findall(pattern, binary_data)
+
     # Decode bytes to string, ignoring errors
     return [m.decode('ascii', errors='ignore') for m in matches]
 
@@ -246,9 +226,6 @@ def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, lengt
         filled_length = int(length * iteration // total)
         bar = fill * filled_length + '-' * (length - filled_length)
         print(f'\r{prefix} |{bar}| {percent}% {suffix}', end=print_end)
-        # # Print New Line on Complete
-        # if iteration == total:
-        #     print()
 
 
 def do_write(asm_string=""):
@@ -397,8 +374,6 @@ def process_template(filename):
             csvFile = csv.reader(file)
             for lines in csvFile:
                 ln=ln+1
-                # print("-------------------------------------")
-                # print(f'->{lines}<-')
                 try:
                     if (lines!=[]):
                         if (lines[0][0]!=";"): #If not a comment or blank
@@ -1042,18 +1017,24 @@ def findstring(memstart, memend):
                             str_locations[code_org + substr_loc] = f'{hex(code[code_org+substr_loc][0])}'
                             # print("String (sub): ",hex(code_org+substr_loc),subs)
                             str_sizes[code_org + substr_loc] = 1
+                            if args.debug:
+                                print(f'String at step 1 {hex(code_org + substr_loc)}')
                             mark_handled(code_org + substr_loc, str_len, "S")
                         else:
                             # print("Subs location:",hex(code_org + substr_loc))
                             str_locations[code_org + substr_loc] = f'"{subs}"'
                             # print("String (sub): ",hex(code_org+substr_loc),subs)
                             str_sizes[code_org + substr_loc] = str_len
+                            if args.debug:
+                                print(f'String at step 2 {hex(code_org + substr_loc)}')
                             mark_handled(code_org + substr_loc, str_len, "S")
                         substr_loc += (str_len+1) # remember we allow for the delimiter
                 else:
                     str_locations[code_org + start] = s
                     # print("String: ",hex(code_org+start),s)
                     str_sizes[code_org + start] = end - start
+                    if args.debug:
+                        print(f'String at step 3 {hex(code_org + start)}')
                     mark_handled(code_org + start, end - start-1, "S")
 
 
@@ -1188,7 +1169,8 @@ print("\nPass 2: Search for strings")
 id_sort = sorted(identified_areas)
 start = 0
 end = endaddress
-findstring(start, end)
+if not args.stay_in_code:
+    findstring(start, end)
 
 
 # dump_code_array("Post pass 2",0xd8dc)
@@ -1228,6 +1210,12 @@ print("\nPass 4: Validate labels")
 This pass is functionally the same as for pass 5, mostly to build the final labels.
 No code is output.
 """
+
+# Move labels from pass 2 into final position
+# ref:
+#    code[address][2] = [label pass 1]
+#    code[address][3] = [label pass 2]
+
 code_snapshot = bytearray(8)
 loc = 0
 
@@ -1349,15 +1337,34 @@ while program_counter < max(code):
     else:
         # At this point we fell through everything, so its probably a string. Just increment
         program_counter += 1
-print_progress_bar(program_counter-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
 
-
-# -- Pass 5 --
 # Now scan for characters that aren't printable but marked as strings.
 # I'll reflag these back to data.
 for loop in range(min(code),max(code)):
     if code[loop][1]=="S" and code[loop][0]<32 and not is_terminator(code[loop][0]):
         code[loop][1]="D"
+
+for loop in range(min(code),max(code)):
+    code[loop][2]=code[loop][3]
+    # if code[loop][1]=="S" and code[loop][0]<32 and not is_terminator(code[loop][0]):
+    #     code[loop][1]="D"
+
+# Now, reset areas marked as strings, but with no data calls
+strflag=0
+for loop in range(min(code),max(code)):
+    if code[loop][2]!="": # We've got a label, so its probably correctly referencing a string
+        strflag=1
+    if code[loop][1]!="C" and strflag==0: # We've not in a data area, but have somthing thats marked as not code, so reset to code
+        code[loop][1]="C"
+    if strflag==1 and code[loop][1]=="C": # We were in a data area, but now we have code, so reset the flag
+        strflag=0
+    # code[loop][2]=code[loop][3]
+
+print_progress_bar(program_counter-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
+
+if args.debug:
+    dump_code_array()
+# -- Pass 5 --
 
 print("\nPass 5: Produce final listing")
 #Move temp labels into the main labels for output
@@ -1365,13 +1372,8 @@ print("\nPass 5: Produce final listing")
 
 output_version_info()
 
-for loop in range(min(code),max(code)):
-    code[loop][2]=code[loop][3]
-    if code[loop][1]=="S" and code[loop][0]<32 and not is_terminator(code[loop][0]):
-        code[loop][1]="D"
 # Print the used external EQUs (with nice formatting)
-# First find the longest label
-
+# First find the longest label, so we can format nicely.
 maxlen=0
 for loop in extern_labels:
     debug(f'{extern_labels[loop][0]} called {extern_labels[loop][1]} times')
@@ -1690,7 +1692,7 @@ while program_counter < max(code):
     elif identified(program_counter) == "C": # or (stay_in_code and identified(program_counter)!="C"):
         # debug("C2 - 1")
         b = z80.decode(decode_buffer, 0)
-        debug(b)
+        # debug(b)
         conds = z80.disasm(b).split(",")[0] + ","
         if b.op in (b.op.JR, b.op.DJNZ):
             # debug("C - 1a")
@@ -1698,13 +1700,15 @@ while program_counter < max(code):
             jump_addr = handle_jump(b, program_counter)
             djnz_addr=lookup_label(jump_addr)
             this_opcode = b.op.name
-            if program_counter==0xceda:
+            if program_counter==0xc1ec:
                 print(f'{hex(program_counter)}, jump_addr={hex(jump_addr)}, djnz={djnz_addr}, op={z80.disasm(b)}')
 
             if len(z80.disasm(b).split(",")) > 1:  # conditional jumps and calls
                 this_opcode = z80.disasm(b).split(",")[0] + ","
             if jump_addr is not None:
                 if djnz_addr[0]=="0": # It's not a label, so we need to reformat
+                    if program_counter==0xc1ec:
+                        print(f'jump_addr={hex(jump_addr)}')
                     # print(b,f'\nja={hex(jump_addr)}, pc={hex(program_counter)} {program_counter-jump_addr} {handle_jump(b,program_counter,True)}')
                     # jump_addr=handle_jump(b,program_counter,True) # The True here requests just the relative offset, no adjusting
                     # jump_addr=djnz_addr
@@ -1725,12 +1729,17 @@ while program_counter < max(code):
                     #
                     # # if program_counter>0xc840 and program_counter<0xc862:
                     #     print(f'{hex(program_counter)}: {hex(jump_addr)} -> {lookup_label(jump_addr)}, opcode={z80.disasm(b)} --> {tmp}  {handle_jump(b,program_counter,True)} {hex(handle_jump(b,program_counter))} lookup: {lookup_label(jump_addr)} or {lookup_label(handle_jump(b,program_counter))}')
+                    if program_counter==0xc1ec:
+                        print(f'{hex(program_counter)}, jump_addr={hex(jump_addr)}, djnz={djnz_addr}, op={z80.disasm(b)} tmp={tmp}')
 
                 else:
                     if "," in this_opcode: # Fixup for JR nz, ADDR so this removes the space if it's a conditional JR
                         tmp = f"{this_opcode}" + lookup_label(jump_addr)
                     else:
                         tmp = f"{this_opcode} " + lookup_label(jump_addr)
+                    if program_counter==0xc1ec:
+                        print(f'{hex(program_counter)}, jump_addr={hex(jump_addr)}, djnz={djnz_addr}, op={z80.disasm(b)},tmp={tmp}')
+
                 code_output(
                     program_counter,
                     tmp,
@@ -1873,4 +1882,5 @@ print()
 print("Lines of code:",stats_loc)
 print("Code Labels:",stats_c_labels)
 print("Data Labels:",stats_d_labels)
-# dump_code_array()
+if args.debug:
+    dump_code_array()
