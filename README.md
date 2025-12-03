@@ -1,6 +1,11 @@
 # z80-smart-disassembler
 
-This is a Z80 disassembler that will try and be smarter about identifying strings data and labels
+# Summary
+This is a Z80 disassembler/reverse engineering tool that takes the effort out of disassembling code. It will try to identify and properly label strings and data areas.
+
+If you need more fine tuning, this includes the ability to use a template file to provide overides, or add special labels.
+
+I wrote this to reverse engineer Amstrad CPC roms and the included templates are aimed towards that but it will handle any Z80 code you throw at it, even if its not an Amstrad file.
 
 This was inspired by Sourcer from V Communications (see https://corexor.wordpress.com/2015/12/09/sourcer-and-windows-source/ for more details) which I've used. I liked the simplicity and the "just get it done" attitude of that.
 
