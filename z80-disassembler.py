@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Copyright (C) 2025 Cormac McGaughey
+Copyright (C) 2025-2026 Cormac McGaughey
 
 This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; version 2.
 
@@ -90,7 +90,7 @@ str_locations = {}
 str_sizes = {}
 style = "asm"
 hexstyle = "0x"
-myversion = "0.91"
+myversion = "0.95"
 
 
 #--- Debugging functions ---
@@ -301,7 +301,7 @@ def check_for_pointer(addr):
         # print("check for ptr:",hex(p_addr),hex(ptr.destination))
         return ptr
     else:
-        #Not a pointer, just a number
+        # Not a pointer, just a number
         ptr.source=to_number(addr)
         ptr.destination=to_number(addr)
         ptr.ispointer=False
@@ -315,7 +315,16 @@ def load_labels(filename):
                 ln=ln+1
                 #Lots, and lots of error checking
                 if lines.lower()[0]!=";" and lines!="":
-                    parsed=lines.split()
+                    # Process added comments
+                    if lines.find(';')>1:
+                        # If theres an extra comment, grab that then parse out the label
+                        added_comment=lines.split(';')[1].strip()
+                        parsed=lines.split(';')[0].split()
+                        print(added_comment)
+                    else:
+                        # No comment? Just parse the label.
+                        parsed=lines.split()
+                        added_comment=""
                     res=(lines=="")
                     if len(parsed)<3 and len(lines)>1:
                         print(f'\nInvalid line in {filename} at line {ln}: {lines}')
@@ -334,6 +343,7 @@ def load_labels(filename):
                         elif lname[0]!=";":
                             extern_labels[addr].append(lname)
                             extern_labels[addr].append(0)
+                            extern_labels[addr].append(added_comment)
                             # print(hex(addr),is_in_code(addr))
     except OSError:
         print("Error: Could not open labels file:", filename)
@@ -646,7 +656,7 @@ def validate_arguments(argslist):
 
 
 
-def code_output(address, code, display_address, comment="", added_details=""):
+def code_output(address, code, display_address, comment="", added_details="",nocomment=False):
     """
     Output a formatted line of code.
     Provides the ability to fine tune what is output (later coding)
@@ -656,6 +666,7 @@ def code_output(address, code, display_address, comment="", added_details=""):
         display_address - Required: A toggle to handle if address is printed or not
         comments        - Optional: Used for additional information. Currently used for opcode explanations.
         added_details   - Optional: Currently used for text+hex dump
+        nocomment       - Optional: Override commentlevel settings
     """
     # print_label(address)
     if asmtype() in (3,4):
@@ -663,13 +674,16 @@ def code_output(address, code, display_address, comment="", added_details=""):
     else:
         colon=":"
     addr = f"{hexstyle}{address:x}{colon} " if display_address else ""
-    match commentlevel:
-        case 0:
-            output=f"    {code}"
-        case 1:
-            output=f"    {code:32}  ;{addr}"
-        case 2:
-            output=f"    {code:32}  ;{addr} {added_details}"
+    if nocomment:
+        output=f"    {code}"
+    else:
+        match commentlevel:
+            case 0:
+                output=f"    {code}"
+            case 1:
+                output=f"    {code:32}  ;{addr}"
+            case 2:
+                output=f"    {code:32}  ;{addr} {added_details}"
 
     if args.style == "asm":
         do_write(f"{output} {comment}")
@@ -1583,14 +1597,31 @@ while program_counter < max(code):
                     tmp = f"{this_opcode}" + lookup_label(jump_addr)
                 else:
                     tmp = f"{this_opcode} " + lookup_label(jump_addr)
-
-                code_output(
-                    program_counter,
-                    tmp,
-                    list_address,
-                    explain.code(z80.disasm(b),explainlevel),
-                    add_extra_info(decode_buffer),
-                )
+                if jump_addr in extern_labels:
+                    added_comment=extern_labels[jump_addr][2]
+                    code_output(
+                        program_counter,
+                        tmp,
+                        list_address,
+                        explain.code(z80.disasm(b),explainlevel),
+                        add_extra_info(decode_buffer),
+                    )
+                    # Do the multi comment thing
+                    for multi_comment in added_comment.split('\\n'):
+                        # print(added_comment.split('\\n'))
+                        code_output(
+                            program_counter,
+                            f'; {multi_comment}',
+                            False,"","",True
+                        )
+                else:
+                    code_output(
+                        program_counter,
+                        tmp,
+                        list_address,
+                        explain.code(z80.disasm(b),explainlevel),
+                        add_extra_info(decode_buffer),
+                    )
                 program_counter += b.len
             else:
                 #It's something like JP (IY)

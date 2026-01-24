@@ -1,6 +1,13 @@
 ;A list of Amstrad CPC BIOS calls.
 ;Recorded here for use with the disassembler
 
+; Format:
+; LABEL equ address
+; or
+; LABEL equ address ;Added comment
+
+; Added comments are optional. If they exist, they will be printed after the CALL.
+
 KL_ROM_SELECT      equ 0xb90f
 KL_CURR_SELECTION  equ 0xb912
 KL_PROBE_ROM       equ 0xb915

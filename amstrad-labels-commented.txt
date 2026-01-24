@@ -1,0 +1,62 @@
+;A list of Amstrad CPC BIOS calls.
+;Recorded here for use with the disassembler
+
+; Format:
+; LABEL equ address
+; or
+; LABEL equ address ;Added comment
+
+; Added comments are optional. If they exist, they will be printed after the CALL. If a \n is added, the comment will be split out into multiple lines.
+
+KL_ROM_SELECT      equ 0xb90f  ; Select ROM slot\nEntry:  C = ROM number\nExit:   F: Z if no ROM present, NZ if present; carry clear if successful\nOn success: new ROM is paged; affects system jumpblock/firmware calls
+KL_CURR_SELECTION  equ 0xb912  ; Get current ROM selection\nEntry:  -\nExit:   C = ROM number currently selected
+KL_PROBE_ROM       equ 0xb915  ; Probe ROM presence\nEntry:  C = ROM number to probe\nExit:   F: Z if no ROM present, NZ if present
+KL_ROM_DESELECT    equ 0xb918  ; Deselect current ROM\nEntry:  -\nExit:   All paged ROMs are deselected, system bank is restored
+KL_LDIR            equ 0xb91b  ; Memory block copy (like LDIR with overlap support)\nEntry:  HL = source, DE = dest, BC = length\nExit:   HL, DE incremented; BC = 0 after copy
+
+KM_WAIT_CHAR       equ 0xbb06  ; Wait for character from keyboard buffer\nEntry:  -\nExit:   A = ASCII char received (waits/blocking)
+KM_READ_CHAR       equ 0xbb09  ; Read keyboard buffer (non-blocking)\nEntry:  -\nExit:   A = ASCII char, or 0 if none in buffer
+KM_SET_EXPAND      equ 0xbb0f  ; Set expanded keys mask\nEntry:  HL = new expand mask\nExit:   HL preserved
+KM_WAIT_KEY        equ 0xbb18  ; Wait until any key pressed\nEntry:  -\nExit:   A = keycode (firmware encoding)\n
+KM_TEST_KEY        equ 0xbb1e  ; Test if a specific key is pressed\nEntry:  E = keycode\nExit:   Z flag set if key held down, NZ if not\n
+KM_SET_SHIFT       equ 0xbb2d  ; Set firmware shift register\nEntry:  L = new shift state mask\nExit:   L preserved
+KM_BREAK_EVENT     equ 0xbb4b  ; Test/control BREAK key (Ctrl+Break)\nEntry:  -\nExit:   Z if break pressed, NZ if not
+
+TXT_OUTPUT         equ 0xbb5a  ; Output character to screen\nEntry:  C = ASCII char, HL = attribute (optional, or HL may be ignored)\nExit:   C, HL preserved. Char output, cursor advanced.
+TXT_RD_CHAR        equ 0xbb60  ; Read character from window/input buffer\nEntry:  -\nExit:   A = char from input stream (blocking), or flags for error
+TXT_GET_WINDOW     equ 0xbb69  ; Get current text window\nEntry:  -\nExit:   HL = left col, DE = top row, B = width, C = height
+TXT_SET_CURSOR     equ 0xbb75  ; Set cursor row/column\nEntry:  H = row, L = col\nExit:   HL preserved, cursor moved
+TXT_GET_CURSOR     equ 0xbb78  ; Get current cursor position\nEntry:  -\nExit:   H = row, L = col
+
+SCR_GET_MODE       equ 0xbc11  ; Get current display mode\nEntry:  -\nExit:   A = mode (0,1,2), other regs preserved
+
+CAS_NOISY          equ 0xbc6b  ; Set cassette relay noise\nEntry:  A = 0 (quiet) or 1 (noisy)\nExit:   A preserved, relay/speaker state set
+CAS_START_MOTOR    equ 0xbc6e  ; Start cassette motor\nEntry:  -\nExit:   Motor started, state updated
+CAS_STOP_MOTOR     equ 0xbc71  ; Stop cassette motor\nEntry:  -\nExit:   Motor stopped
+CAS_IN_OPEN        equ 0xbc77  ; Open tape for input\nEntry:  BC = buffer, DE = file header (optional)\nExit:   F: Z if fail, NZ if OK; sets up cassette for reading
+CAS_IN_CLOSE       equ 0xbc7a  ; Close tape input\nEntry:  -\nExit:   Cleans up buffers, flags
+CAS_IN_ABANDON     equ 0xbc7d  ; Abandon cassette input\nEntry:  -\nExit:   Tape read aborted, state reset
+CAS_IN_CHAR        equ 0xbc80  ; Read byte from cassette\nEntry:  -\nExit:   A = byte read; Z if EOF/error
+CAS_IN_DIRECT      equ 0xbc83  ; Read byte, direct tape\nEntry:  -\nExit:   A = byte; Z if EOF/error
+CAS_OUT_OPEN       equ 0xbc8c  ; Open tape for output\nEntry:  BC = buffer, DE = file header (in some modes)\nExit:   F: Z if fail, NZ if OK; sets up for writing
+CAS_OUT_CLOSE      equ 0xbc8f  ; Close tape output\nEntry:  -\nExit:   Buffer flushed, tape properly terminated.
+CAS_OUT_ABANDON    equ 0xbc92  ; Abandon cassette output\nEntry:  -\nExit:   Tape write aborted, buffer/state reset
+CAS_OUT_CHAR       equ 0xbc95  ; Write byte to cassette\nEntry:  A = byte to write\nExit:   Z if write successful, NZ otherwise (error)
+CAS_OUT_DIRECT     equ 0xbc98  ; Write byte direct to cassette\nEntry:  A = byte to write\nExit:   Z if OK, NZ for error
+CAS_CATALOG        equ 0xbc9b  ; List tape catalog/directory\nEntry:  Buffer addresses as required (often set up by firmware)\nExit:   Catalog printed to text window, state flags set
+
+KL_CHOKE_OFF       equ 0xbcc8  ; End hardware choke (timing/refresh block)\nEntry:  -\nExit:   Choke (interrupt mask) removed, normal operation resumes
+KL_ROM_WALK        equ 0xbccb  ; Step through all ROMs (enumerate)\nEntry:  -\nExit:   C = number of ROMs found; HL points to ROM info
+KL_INIT_BACK       equ 0xbcce  ; Init background (vdu/printer)\nEntry:  -\nExit:   Internal background handlers set up
+KL_LOG_EXT         equ 0xbcd1  ; Register an extension/command\nEntry:  HL = pointer to extension table\nExit:   Table registered for RSX/ROM calls
+KL_FIND_COMMAND    equ 0xbcd4  ; Find command/RSX in tables\nEntry:  HL = pointer to command name\nExit:   Z if not found, NZ + HL = address if found
+KL_ADD_FRAME_FLY   equ 0xbcda  ; Install per-frame routine\nEntry:  HL = pointer to routine\nExit:   Z if OK, NZ on error
+KL_DEL_TICKER      equ 0xbcec  ; Remove ticker/fly routine\nEntry:  HL = pointer to routine\nExit:   Z if successful, NZ if not found
+KL_INIT_EVENT      equ 0xbcef  ; Initialize event handler\nEntry:  HL = event structure\nExit:   Event installed, HL preserved
+
+MC_START_PROGRAM   equ 0xbd16  ; Start MC program at HL\nEntry:  HL = start address\nExit:   Does not return: Jumps to HL (user code), firmware stack state preserved
+MC_PRINT_CHAR      equ 0xbd2b  ; Print char to printer\nEntry:  A = ASCII char\nExit:   Printer buffer/state updated; Z if successful
+MC_BUSY_PRINTER    equ 0xbd2e  ; Printer ready/busy state\nEntry:  -\nExit:   Z if ready, NZ if busy; A = status
+MC_SEND_PRINTER    equ 0xbd31  ; Send buffer to printer\nEntry:  HL = pointer to buffer\nExit:   Data sent, buffer state as per printer status
+
+JUMP_RESTORE       equ 0xbd37  ; Restore from RSX dispatch\nEntry:  Stack = RSX state frame\nExit:   Restores registers, returns with RET or jumps

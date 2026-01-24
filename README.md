@@ -203,30 +203,40 @@ CALL 0xbb5a                ;0x121:   cd 5a bb  ".Z." The current PC value plus t
 ```
 # Label file
 
-This is used by adding `--labels LABELSFILE` to the command line.
+This is used by adding `--labels LABELSFILE` to the command line. A label file allows external calls, such as BIOS entry points, to be defined and used in disassembled code. I've included `amstrad-labels.txt` in this repository as an example and for convenience.
 
-A label file allows external calls, such as BIOS entry points, to be defined and used in disassembled code. I've included `amstrad-labels.txt` in this repository as an example and for convenience.
+Two labels files for Amstrad CPC have been supplied: `amstrad-labels.txt` and `amstrad-labels-commented.txt`. The first is just the list of BIOS calls, and the second is the list of BIOS calls with added comments.
 
 You can also add custom code labels in this file, such as those for RSX jump points.
 
-This is defined as follows:
+A labels file uses the following format:
+
+Comments start with ';' - If a line starts with a `;` that line will be ignored. Blank lines are also ignored.
+
+Comments added at the end of a label line will be added as comments into the output. This can be broken up using `\n` to split the comment out into multiple lines, for example:
 
 ```
 ;A list of Amstrad CPC BIOS calls.
 ;Recorded here for use with the disassembler
 
-KL_ROM_SELECT      equ 0xb90f
+KL_ROM_SELECT      equ 0xb90f  ; Select ROM slot\nEntry:  C = ROM number\nExit:   F: Z if no ROM present, NZ if present; carry clear if successful\nOn success: new ROM is paged; affects system jumpblock/firmware calls
 KL_CURR_SELECTION  equ 0xb912
 KL_PROBE_ROM       equ 0xb915
 KL_ROM_DESELECT    equ 0xb918
 ```
 
-Comments start with ';'
+Another example is if a label file reads:
+```
+TXT_OUTPUT         equ 0xbb5a  ; Output character to screen\nEntry:  C = ASCII char, HL = attribute (optional, or HL may be ignored)\nExit:   C, HL preserved. Char output, cursor advanced.
+```
 
-Blank lines are ignored.
-
-Labels should be structed as `Labelname equ 0x0000`
-
+The output will be:
+```
+CALL TXT_OUTPUT                   ;0x120c:   cd 5a bb  ".Z."
+; Output character to screen
+; Entry:  C = ASCII char, HL = attribute (optional, or HL may be ignored)
+; Exit:   C, HL preserved. Char output, cursor advanced.
+```
 
 # Templates
 
