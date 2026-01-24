@@ -320,7 +320,6 @@ def load_labels(filename):
                         # If theres an extra comment, grab that then parse out the label
                         added_comment=lines.split(';')[1].strip()
                         parsed=lines.split(';')[0].split()
-                        print(added_comment)
                     else:
                         # No comment? Just parse the label.
                         parsed=lines.split()
