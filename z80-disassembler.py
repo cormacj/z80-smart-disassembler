@@ -58,7 +58,6 @@ class Pointer(NamedTuple):
 # Variables as needed
 list_address = 1
 min_length = 3
-identified_areas = {}
 printed_labels = defaultdict(list)
 extern_labels = defaultdict(list)
 labels = defaultdict(set)
@@ -88,7 +87,6 @@ stats_loc=0 # Lines of code generated
 strings_with_locations = []
 str_locations = {}
 str_sizes = {}
-style = "asm"
 hexstyle = "0x"
 myversion = "0.95"
 
@@ -424,7 +422,6 @@ def process_template(filename):
                                     mark_handled(addr,3,"C")
                                 case "p":
                                     mark_handled(addr,2,"Dp")
-                                    code_loc=begin #Get the address where the pointer is pointing to
                                 case "s":
                                     for loop in range(begin,end-1):
                                         mark_handled(loop,1,"S")
@@ -1085,8 +1082,6 @@ code[code_org+loc][3]=""
 
 print("\nPass 1: Identify addressable areas")
 decode_buffer = bytearray(6)
-data_locations = {}
-jump_locations = {}
 
 loc = min(code)
 end_of_code=max(code)
@@ -1114,7 +1109,6 @@ while loc <= end_of_code:
         jump_addr = handle_jump(b, loc)
         if (jump_addr and (jump_addr not in labels)):  # Its a jump, but area is already data
             # debug("JP to ",hex(jump_addr))
-            jump_locations[jump_addr] = hex(jump_addr)
             # update_label_name(jump_addr,"C")
             mark_handled(jump_addr, 1, "C")
             # mark_handled(loc, 1, "C")
@@ -1128,7 +1122,6 @@ print_progress_bar(endaddress, endaddress, prefix='    Progress:', suffix='Compl
 # dump_code_array("Pre pass 2",0xd8dc)
 #//TODO: Reimpliment
 print("\nPass 2: Search for strings")
-id_sort = sorted(identified_areas)
 start = 0
 end = endaddress
 
