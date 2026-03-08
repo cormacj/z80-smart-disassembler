@@ -90,6 +90,8 @@ str_locations = {}
 str_sizes = {}
 style = "asm"
 hexstyle = "0x"
+asm_type_id = 0
+code_min = 0
 myversion = "0.95"
 
 
@@ -131,16 +133,10 @@ def is_terminator(byte):
         return False
 
 def decode_terminator(byte):
-    if asmtype()==3: # Maxam
-        hextype="&"
-    elif asmtype()==4: # Pyradev
-        hextype="#"
-    else:
-        hextype="0x"
     if byte>0x9f: #Asc 31+0x80
-        return f"\", '{chr(byte-0x80)}' + {hextype}80"
+        return f"\", '{chr(byte-0x80)}' + {hexstyle}80"
     else:
-        return f"\", {hextype}{byte:02x}"
+        return f"\", {hexstyle}{byte:02x}"
 
 def debug(message,arg1="",arg2="",arg3=""):
     """
@@ -172,6 +168,17 @@ def asmtype():
             sys.exit(1)
 
 
+def get_hex_prefix():
+    """Return the hex prefix string for the current assembler type."""
+    match asm_type_id:
+        case 3:
+            return "&"
+        case 4:
+            return "#"
+        case _:
+            return "0x"
+
+
 def inc_program_counter(pc,inc):
     """
     It's a 16 bit system. You can't go past 0xffff
@@ -182,11 +189,7 @@ def inc_program_counter(pc,inc):
         return
 
 def process_hextype(hexaddr):
-    if asmtype()==3: # Maxam
-        return hexaddr.replace("0x","&")
-    elif asmtype()==4: # Pyradev
-        return hexaddr.replace("0x","#")
-    return hexaddr
+    return hexaddr.replace("0x", hexstyle)
 
 
 def build_strings_from_binary_data(binary_data, min_length=3):
@@ -595,15 +598,13 @@ def validate_arguments(argslist):
     global hexstyle
     global commentlevel
     global explainlevel
+    global asm_type_id
+
+    asm_type_id = asmtype()
 
     # print(argslist)
     # Ensure that supplied arguments are valid
-    if asmtype()==3:
-        hexstyle="&"
-    elif asmtype()==4:
-        hexstyle="#"
-    else:
-        hexstyle="0x"
+    hexstyle = get_hex_prefix()
 
     if argslist.debug:  # pragma: no cover
         print("--- debug output ---")
@@ -668,7 +669,7 @@ def code_output(address, code, display_address, comment="", added_details="",noc
         nocomment       - Optional: Override commentlevel settings
     """
     # print_label(address)
-    if asmtype() in (3,4):
+    if asm_type_id in (3,4):
         colon=""
     else:
         colon=":"
@@ -718,7 +719,7 @@ def is_in_code(addr):
         addr    - Required: address to be checked.
     Returns a boolean True if the address is inside the code, otherwise False.
     """
-    if (addr>=min(code)) and (addr<=(max(code))):
+    if (addr>=code_min) and (addr<=(end_of_code)):
         return True
     else:
         return False
@@ -821,7 +822,7 @@ def lookup_label(addr, prettyprint=""):
             return f'{hexstyle}{addr:x}'
     elif prettyprint != "":
         if (code[addr][2]!="") and (is_in_code(addr)):
-            if asmtype()>1:
+            if asm_type_id>1:
                 tmp=f'{code[addr][2]}'
                 return tmp
             else:
@@ -1088,7 +1089,8 @@ decode_buffer = bytearray(6)
 data_locations = {}
 jump_locations = {}
 
-loc = min(code)
+code_min = min(code)
+loc = code_min
 end_of_code=max(code)
 
 while loc <= end_of_code:
@@ -1137,10 +1139,10 @@ if not args.stay_in_code:
     findstring(start, end)
 
 print("\nPass 3: Build code structure")
-loc = min(code)
+loc = code_min
 last = "C"
 print_progress_bar(loc-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
-while loc <= max(code):
+while loc <= end_of_code:
     print_progress_bar(loc-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
     code[loc][1] = code[loc][1] or last
     last = code[loc][1]
@@ -1172,11 +1174,11 @@ if args.templatefile is not None:
         print("\n")
 
 
-program_counter=min(code)
+program_counter=code_min
 print_progress_bar(program_counter-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
 
 # dump_code_array()
-while program_counter < max(code):
+while program_counter < end_of_code:
     print_progress_bar(program_counter-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
     # Build a decoding buffer
     codesize = min(4, end_of_code - program_counter)
@@ -1279,7 +1281,7 @@ while program_counter < max(code):
 # cause some labels to not be auto-generated.
 
 # Scan for characters that aren't printable but marked as strings, reflag these back to data.
-for loop in range(min(code),max(code)):
+for loop in range(code_min,end_of_code):
     if code[loop][1]=="S" and code[loop][0]<32 and not is_terminator(code[loop][0]):
         code[loop][1]="D"
     #Also finalize the label names from pass 2
@@ -1287,7 +1289,7 @@ for loop in range(min(code),max(code)):
 
 # Now, reset areas marked as strings (or data), but with no data labels.
 strflag=0
-for loop in range(min(code),max(code)):
+for loop in range(code_min,end_of_code):
     if code[loop][2]!="": # We've got a label, so its probably correctly referencing a string
         strflag=1
     if code[loop][1]!="C" and strflag==0: # We've not in a data area, but have somthing thats marked as not code, so reset to code
@@ -1327,17 +1329,17 @@ for loop in extern_labels:
 do_write("\n\n")
 
 # Print the org statement
-program_counter=min(code)
+program_counter=code_min
 if args.style == "asm":
     do_write(f"    org {hexstyle}{code_org:x}\n")
 else:
     do_write(f"     org {hexstyle}{code_org:x}\n")
 
 # print_progress_bar(0, endaddress, prefix='    Progress:', suffix='Complete', length=50)
-while program_counter < max(code):
+while program_counter < end_of_code:
     # if 0xca80 < program_counter <0xca93:
     #     dump_code_array("--->",program_counter)
-    print_progress_bar(program_counter, max(code), prefix='    Progress:', suffix='Complete', length=50)
+    print_progress_bar(program_counter, end_of_code, prefix='    Progress:', suffix='Complete', length=50)
     # Build a decoding buffer
     codesize = min(4, end_of_code - program_counter)
     for loop in range(0,codesize):
@@ -1689,7 +1691,7 @@ while program_counter < max(code):
                 program_counter += b.len
         else:
             tmp=z80.disasm(b)
-            if asmtype()==3:
+            if asm_type_id==3:
                 tmp=tmp.replace("0x","&")
             code_output(
                 program_counter,
@@ -1702,7 +1704,7 @@ while program_counter < max(code):
     else:
         # program_counter += b.len
         program_counter += 1
-print_progress_bar(max(code), max(code),prefix='    Progress:', suffix='Complete', length=50)
+print_progress_bar(end_of_code, end_of_code,prefix='    Progress:', suffix='Complete', length=50)
 print()
 if args.outfile:
     print(f"\n{args.outfile} created!")
