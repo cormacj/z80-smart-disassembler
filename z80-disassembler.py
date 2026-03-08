@@ -42,7 +42,7 @@ import re
 import os
 from collections import defaultdict
 from collections import UserDict
-from typing import NamedTuple
+from dataclasses import dataclass
 
 from z80comments import explain
 from z80dis import z80
@@ -50,10 +50,11 @@ from z80dis import z80
 # --- Globals -----
 
 # Used for processing the template file.
-class Pointer(NamedTuple):
-    ispointer: bool
-    source: int
-    destination: int
+@dataclass
+class Pointer:
+    ispointer: bool = False
+    source: int = 0
+    destination: int = 0
 
 # Variables as needed
 list_address = 1
@@ -291,7 +292,7 @@ def check_for_pointer(addr):
         addr    - Required: Address in the binary data array for a pointer address
     """
 
-    ptr=Pointer
+    ptr=Pointer()
     if addr[0]=="(":
         # Yup, we have a pointer
         p_addr=to_number(addr.replace("(","").replace(")",""))-code_org
@@ -374,8 +375,8 @@ def process_template(filename):
 
     begin=0
     end=0
-    start_template = Pointer
-    end_template = Pointer
+    start_template = Pointer()
+    end_template = Pointer()
 
     try:
         with open(filename, mode ='r') as file:
