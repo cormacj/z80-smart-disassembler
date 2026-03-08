@@ -131,16 +131,10 @@ def is_terminator(byte):
         return False
 
 def decode_terminator(byte):
-    if asmtype()==3: # Maxam
-        hextype="&"
-    elif asmtype()==4: # Pyradev
-        hextype="#"
-    else:
-        hextype="0x"
     if byte>0x9f: #Asc 31+0x80
-        return f"\", '{chr(byte-0x80)}' + {hextype}80"
+        return f"\", '{chr(byte-0x80)}' + {hexstyle}80"
     else:
-        return f"\", {hextype}{byte:02x}"
+        return f"\", {hexstyle}{byte:02x}"
 
 def debug(message,arg1="",arg2="",arg3=""):
     """
@@ -150,6 +144,8 @@ def debug(message,arg1="",arg2="",arg3=""):
         print("*debug* ",message,arg1,arg2,arg3)
 #--------------------------------
 
+_asmtype_cache = None
+
 def asmtype():
     """
     Produce a shorthand version of assembler type so I don't constantly have to do if args.assembler=="maxam"
@@ -158,18 +154,22 @@ def asmtype():
     3=maxam
     4=pyradev
     """
+    global _asmtype_cache
+    if _asmtype_cache is not None:
+        return _asmtype_cache
     match args.assembler:
         case "z88":
-            return 1
+            _asmtype_cache = 1
         case "z80asm":
-            return 2
+            _asmtype_cache = 2
         case "maxam":
-            return 3
+            _asmtype_cache = 3
         case "pyradev":
-            return 4
+            _asmtype_cache = 4
         case _:
             print("Invalid assembler type in asmtype()")
             sys.exit(1)
+    return _asmtype_cache
 
 
 def inc_program_counter(pc,inc):
@@ -1089,6 +1089,7 @@ data_locations = {}
 jump_locations = {}
 
 loc = min(code)
+code_min = loc
 end_of_code=max(code)
 
 while loc <= end_of_code:
@@ -1137,10 +1138,10 @@ if not args.stay_in_code:
     findstring(start, end)
 
 print("\nPass 3: Build code structure")
-loc = min(code)
+loc = code_min
 last = "C"
 print_progress_bar(loc-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
-while loc <= max(code):
+while loc <= end_of_code:
     print_progress_bar(loc-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
     code[loc][1] = code[loc][1] or last
     last = code[loc][1]
@@ -1172,11 +1173,11 @@ if args.templatefile is not None:
         print("\n")
 
 
-program_counter=min(code)
+program_counter=code_min
 print_progress_bar(program_counter-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
 
 # dump_code_array()
-while program_counter < max(code):
+while program_counter < end_of_code:
     print_progress_bar(program_counter-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
     # Build a decoding buffer
     codesize = min(4, end_of_code - program_counter)
@@ -1279,7 +1280,7 @@ while program_counter < max(code):
 # cause some labels to not be auto-generated.
 
 # Scan for characters that aren't printable but marked as strings, reflag these back to data.
-for loop in range(min(code),max(code)):
+for loop in range(code_min,end_of_code):
     if code[loop][1]=="S" and code[loop][0]<32 and not is_terminator(code[loop][0]):
         code[loop][1]="D"
     #Also finalize the label names from pass 2
@@ -1287,7 +1288,7 @@ for loop in range(min(code),max(code)):
 
 # Now, reset areas marked as strings (or data), but with no data labels.
 strflag=0
-for loop in range(min(code),max(code)):
+for loop in range(code_min,end_of_code):
     if code[loop][2]!="": # We've got a label, so its probably correctly referencing a string
         strflag=1
     if code[loop][1]!="C" and strflag==0: # We've not in a data area, but have somthing thats marked as not code, so reset to code
@@ -1327,17 +1328,17 @@ for loop in extern_labels:
 do_write("\n\n")
 
 # Print the org statement
-program_counter=min(code)
+program_counter=code_min
 if args.style == "asm":
     do_write(f"    org {hexstyle}{code_org:x}\n")
 else:
     do_write(f"     org {hexstyle}{code_org:x}\n")
 
 # print_progress_bar(0, endaddress, prefix='    Progress:', suffix='Complete', length=50)
-while program_counter < max(code):
+while program_counter < end_of_code:
     # if 0xca80 < program_counter <0xca93:
     #     dump_code_array("--->",program_counter)
-    print_progress_bar(program_counter, max(code), prefix='    Progress:', suffix='Complete', length=50)
+    print_progress_bar(program_counter, end_of_code, prefix='    Progress:', suffix='Complete', length=50)
     # Build a decoding buffer
     codesize = min(4, end_of_code - program_counter)
     for loop in range(0,codesize):
@@ -1702,7 +1703,7 @@ while program_counter < max(code):
     else:
         # program_counter += b.len
         program_counter += 1
-print_progress_bar(max(code), max(code),prefix='    Progress:', suffix='Complete', length=50)
+print_progress_bar(end_of_code, end_of_code,prefix='    Progress:', suffix='Complete', length=50)
 print()
 if args.outfile:
     print(f"\n{args.outfile} created!")
