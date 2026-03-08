@@ -131,16 +131,10 @@ def is_terminator(byte):
         return False
 
 def decode_terminator(byte):
-    if asmtype()==3: # Maxam
-        hextype="&"
-    elif asmtype()==4: # Pyradev
-        hextype="#"
-    else:
-        hextype="0x"
     if byte>0x9f: #Asc 31+0x80
-        return f"\", '{chr(byte-0x80)}' + {hextype}80"
+        return f"\", '{chr(byte-0x80)}' + {hexstyle}80"
     else:
-        return f"\", {hextype}{byte:02x}"
+        return f"\", {hexstyle}{byte:02x}"
 
 def debug(message,arg1="",arg2="",arg3=""):
     """
@@ -182,9 +176,9 @@ def inc_program_counter(pc,inc):
         return
 
 def process_hextype(hexaddr):
-    if asmtype()==3: # Maxam
+    if asm_type_cached==3: # Maxam
         return hexaddr.replace("0x","&")
-    elif asmtype()==4: # Pyradev
+    elif asm_type_cached==4: # Pyradev
         return hexaddr.replace("0x","#")
     return hexaddr
 
@@ -668,7 +662,7 @@ def code_output(address, code, display_address, comment="", added_details="",noc
         nocomment       - Optional: Override commentlevel settings
     """
     # print_label(address)
-    if asmtype() in (3,4):
+    if asm_type_cached in (3,4):
         colon=""
     else:
         colon=":"
@@ -821,7 +815,7 @@ def lookup_label(addr, prettyprint=""):
             return f'{hexstyle}{addr:x}'
     elif prettyprint != "":
         if (code[addr][2]!="") and (is_in_code(addr)):
-            if asmtype()>1:
+            if asm_type_cached>1:
                 tmp=f'{code[addr][2]}'
                 return tmp
             else:
@@ -1022,6 +1016,7 @@ args = parse_arguments()
 
 # Now check the command line arguments to make sure they are valid
 validate_arguments(args)
+asm_type_cached = asmtype()
 
 code_org = to_number(args.loadaddress)
 
@@ -1138,9 +1133,10 @@ if not args.stay_in_code:
 
 print("\nPass 3: Build code structure")
 loc = min(code)
+code_max_pass3 = max(code)
 last = "C"
 print_progress_bar(loc-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
-while loc <= max(code):
+while loc <= code_max_pass3:
     print_progress_bar(loc-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
     code[loc][1] = code[loc][1] or last
     last = code[loc][1]
@@ -1173,10 +1169,11 @@ if args.templatefile is not None:
 
 
 program_counter=min(code)
+code_max_pass4 = max(code)
 print_progress_bar(program_counter-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
 
 # dump_code_array()
-while program_counter < max(code):
+while program_counter < code_max_pass4:
     print_progress_bar(program_counter-code_org, endaddress, prefix='    Progress:', suffix='Complete', length=50)
     # Build a decoding buffer
     codesize = min(4, end_of_code - program_counter)
@@ -1279,7 +1276,9 @@ while program_counter < max(code):
 # cause some labels to not be auto-generated.
 
 # Scan for characters that aren't printable but marked as strings, reflag these back to data.
-for loop in range(min(code),max(code)):
+code_min_cleanup = min(code)
+code_max_cleanup = max(code)
+for loop in range(code_min_cleanup,code_max_cleanup):
     if code[loop][1]=="S" and code[loop][0]<32 and not is_terminator(code[loop][0]):
         code[loop][1]="D"
     #Also finalize the label names from pass 2
@@ -1287,7 +1286,7 @@ for loop in range(min(code),max(code)):
 
 # Now, reset areas marked as strings (or data), but with no data labels.
 strflag=0
-for loop in range(min(code),max(code)):
+for loop in range(code_min_cleanup,code_max_cleanup):
     if code[loop][2]!="": # We've got a label, so its probably correctly referencing a string
         strflag=1
     if code[loop][1]!="C" and strflag==0: # We've not in a data area, but have somthing thats marked as not code, so reset to code
@@ -1328,16 +1327,17 @@ do_write("\n\n")
 
 # Print the org statement
 program_counter=min(code)
+code_max_pass5 = max(code)
 if args.style == "asm":
     do_write(f"    org {hexstyle}{code_org:x}\n")
 else:
     do_write(f"     org {hexstyle}{code_org:x}\n")
 
 # print_progress_bar(0, endaddress, prefix='    Progress:', suffix='Complete', length=50)
-while program_counter < max(code):
+while program_counter < code_max_pass5:
     # if 0xca80 < program_counter <0xca93:
     #     dump_code_array("--->",program_counter)
-    print_progress_bar(program_counter, max(code), prefix='    Progress:', suffix='Complete', length=50)
+    print_progress_bar(program_counter, code_max_pass5, prefix='    Progress:', suffix='Complete', length=50)
     # Build a decoding buffer
     codesize = min(4, end_of_code - program_counter)
     for loop in range(0,codesize):
@@ -1689,7 +1689,7 @@ while program_counter < max(code):
                 program_counter += b.len
         else:
             tmp=z80.disasm(b)
-            if asmtype()==3:
+            if asm_type_cached==3:
                 tmp=tmp.replace("0x","&")
             code_output(
                 program_counter,
