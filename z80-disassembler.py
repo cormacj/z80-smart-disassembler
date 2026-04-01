@@ -42,7 +42,7 @@ import re
 import os
 from collections import defaultdict
 from collections import UserDict
-from typing import NamedTuple
+from dataclasses import dataclass
 
 from z80comments import explain
 from z80dis import z80
@@ -50,10 +50,11 @@ from z80dis import z80
 # --- Globals -----
 
 # Used for processing the template file.
-class Pointer(NamedTuple):
-    ispointer: bool
-    source: int
-    destination: int
+@dataclass
+class Pointer:
+    ispointer: bool = False
+    source: int = 0
+    destination: int = 0
 
 # Variables as needed
 list_address = 1
@@ -286,21 +287,16 @@ def check_for_pointer(addr):
         addr    - Required: Address in the binary data array for a pointer address
     """
 
-    ptr=Pointer
     if addr[0]=="(":
         # Yup, we have a pointer
         p_addr=to_number(addr.replace("(","").replace(")",""))-code_org
-        ptr.ispointer=True
-        ptr.source=to_number(p_addr)
-        ptr.destination=(bin_data[p_addr+1]*0x100)+(bin_data[p_addr]) #Get the address where the pointer is pointing to
-        # print("check for ptr:",hex(p_addr),hex(ptr.destination))
-        return ptr
+        destination=(bin_data[p_addr+1]*0x100)+(bin_data[p_addr]) #Get the address where the pointer is pointing to
+        # print("check for ptr:",hex(p_addr),hex(destination))
+        return Pointer(ispointer=True, source=to_number(p_addr), destination=destination)
     else:
         # Not a pointer, just a number
-        ptr.source=to_number(addr)
-        ptr.destination=to_number(addr)
-        ptr.ispointer=False
-    return ptr
+        val=to_number(addr)
+        return Pointer(ispointer=False, source=val, destination=val)
 
 def load_labels(filename):
     ln=0
@@ -369,8 +365,6 @@ def process_template(filename):
 
     begin=0
     end=0
-    start_template = Pointer
-    end_template = Pointer
 
     try:
         with open(filename, mode ='r') as file:
