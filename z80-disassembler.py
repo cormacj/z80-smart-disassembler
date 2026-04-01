@@ -855,8 +855,8 @@ def handle_data(b):
 
     if b.operands[0][0] is b.operands[0][0].ADDR_DEREF:  # if not a LD (HL)
         return b.operands[0][1]
-    elif b.operands[0][0] is b.operands[0][0].ADDR_DEREF:  # is a LD (0x1234),HL
-        return b.operands[0][1]
+    elif b.operands[1][0] is b.operands[1][0].ADDR_DEREF:  # is a LD (0x1234),HL
+        return b.operands[1][1]
     elif b.operands[1][0] is b.operands[0][0].ADDR_DEREF:  # is a LD HL,(0x1234)
         return b.operands[1][1]
     elif b.operands[1][0] is b.operands[1][0].IMM:  # is a LD (0x1234),HL
