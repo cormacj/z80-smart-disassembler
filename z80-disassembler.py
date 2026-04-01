@@ -42,7 +42,7 @@ import re
 import os
 from collections import defaultdict
 from collections import UserDict
-from typing import NamedTuple
+from dataclasses import dataclass
 
 from z80comments import explain
 from z80dis import z80
@@ -50,15 +50,15 @@ from z80dis import z80
 # --- Globals -----
 
 # Used for processing the template file.
-class Pointer(NamedTuple):
-    ispointer: bool
-    source: int
-    destination: int
+@dataclass
+class Pointer:
+    ispointer: bool = False
+    source: int = 0
+    destination: int = 0
 
 # Variables as needed
 list_address = 1
 min_length = 3
-identified_areas = {}
 printed_labels = defaultdict(list)
 extern_labels = defaultdict(list)
 labels = defaultdict(set)
@@ -88,7 +88,6 @@ stats_loc=0 # Lines of code generated
 strings_with_locations = []
 str_locations = {}
 str_sizes = {}
-style = "asm"
 hexstyle = "0x"
 asm_type_id = 0
 code_min = 0
@@ -183,10 +182,7 @@ def inc_program_counter(pc,inc):
     """
     It's a 16 bit system. You can't go past 0xffff
     """
-    if pc+inc<=0xffff:
-        return pc+inc
-    else:
-        return
+    return (pc + inc) & 0xffff
 
 def process_hextype(hexaddr):
     return hexaddr.replace("0x", hexstyle)
@@ -294,21 +290,16 @@ def check_for_pointer(addr):
         addr    - Required: Address in the binary data array for a pointer address
     """
 
-    ptr=Pointer
     if addr[0]=="(":
         # Yup, we have a pointer
         p_addr=to_number(addr.replace("(","").replace(")",""))-code_org
-        ptr.ispointer=True
-        ptr.source=to_number(p_addr)
-        ptr.destination=(bin_data[p_addr+1]*0x100)+(bin_data[p_addr]) #Get the address where the pointer is pointing to
-        # print("check for ptr:",hex(p_addr),hex(ptr.destination))
-        return ptr
+        destination=(bin_data[p_addr+1]*0x100)+(bin_data[p_addr]) #Get the address where the pointer is pointing to
+        # print("check for ptr:",hex(p_addr),hex(destination))
+        return Pointer(ispointer=True, source=to_number(p_addr), destination=destination)
     else:
         # Not a pointer, just a number
-        ptr.source=to_number(addr)
-        ptr.destination=to_number(addr)
-        ptr.ispointer=False
-    return ptr
+        val=to_number(addr)
+        return Pointer(ispointer=False, source=val, destination=val)
 
 def load_labels(filename):
     ln=0
@@ -377,8 +368,6 @@ def process_template(filename):
 
     begin=0
     end=0
-    start_template = Pointer
-    end_template = Pointer
 
     try:
         with open(filename, mode ='r') as file:
@@ -427,15 +416,14 @@ def process_template(filename):
                                     mark_handled(addr,3,"C")
                                 case "p":
                                     mark_handled(addr,2,"Dp")
-                                    code_loc=begin #Get the address where the pointer is pointing to
                                 case "s":
                                     for loop in range(begin,end-1):
                                         mark_handled(loop,1,"S")
                                 case _:
                                     print("Unknown data type: ",datatype.lower())
-                                    exit
-                except:
-                    print(f"\n\nError processing template file at line {ln}: {lines[0][0]}")
+                                    sys.exit(1)
+                except Exception as e:
+                    print(f"\n\nError processing template file at line {ln}: {lines[0] if lines else '<empty>'}: {e}")
                     sys.exit(1)
     except OSError:
         print("Error: Could not open template file:", filename)
@@ -449,14 +437,15 @@ def to_number(n):
     """
     try:
         return int(str(n), 0)
-    except Exception:
+    except (ValueError, TypeError):
         try:
-            return int('0x' + n, 0)
-        except Exception:
-            return float(n)
-        finally:
-            print("\n\nError occured. Invalid number: ",n)
-            exit(1)
+            return int('0x' + str(n), 0)
+        except (ValueError, TypeError):
+            try:
+                return float(n)
+            except (ValueError, TypeError):
+                print(f"\n\nError occurred. Invalid number: {n}")
+                sys.exit(1)
 
 def parse_arguments():
     """
@@ -639,7 +628,7 @@ def validate_arguments(argslist):
     try:
         if args.templatefile:
             f=open(args.templatefile,'r')
-            f.close
+            f.close()
     except OSError:
         print("Error: Could not open template file:", args.templatefile)
         sys.exit(1)
@@ -648,7 +637,7 @@ def validate_arguments(argslist):
         if args.outfile:
             f=open(args.outfile,'w')
             f.write("\n")
-            f.close
+            f.close()
     except OSError:
         print("Error: Could not write to output file:", args.outfile)
         sys.exit(1)
@@ -764,12 +753,12 @@ def type_lookup(datatype):
             return "code"
 
 
-def update_label_name(addr, type):
+def update_label_name(addr, data_type):
     """
     Create a label name if the address is inside the code
     @params:
-        addr    - Required: Address
-        type    - Required: data type C/D
+        addr      - Required: Address
+        data_type - Required: data type C/D
     Returns:
         A string in the format D_1234 or data_1234 is returns
     """
@@ -779,11 +768,11 @@ def update_label_name(addr, type):
 
     match to_number(args.labeltype):
         case 1:
-            result = type
+            result = data_type
         case 2:
-            result = type_lookup(type)
+            result = type_lookup(data_type)
         case _:
-            result = type
+            result = data_type
 
     if is_in_code(addr):
         code[addr][2]=f'{result}_{addr:04X}'
@@ -855,8 +844,8 @@ def handle_data(b):
 
     if b.operands[0][0] is b.operands[0][0].ADDR_DEREF:  # if not a LD (HL)
         return b.operands[0][1]
-    elif b.operands[0][0] is b.operands[0][0].ADDR_DEREF:  # is a LD (0x1234),HL
-        return b.operands[0][1]
+    elif b.operands[1][0] is b.operands[1][0].ADDR_DEREF:  # is a LD (0x1234),HL
+        return b.operands[1][1]
     elif b.operands[1][0] is b.operands[0][0].ADDR_DEREF:  # is a LD HL,(0x1234)
         return b.operands[1][1]
     elif b.operands[1][0] is b.operands[1][0].IMM:  # is a LD (0x1234),HL
@@ -1086,8 +1075,6 @@ code[code_org+loc][3]=""
 
 print("\nPass 1: Identify addressable areas")
 decode_buffer = bytearray(6)
-data_locations = {}
-jump_locations = {}
 
 code_min = min(code)
 loc = code_min
@@ -1116,7 +1103,6 @@ while loc <= end_of_code:
         jump_addr = handle_jump(b, loc)
         if (jump_addr and (jump_addr not in labels)):  # Its a jump, but area is already data
             # debug("JP to ",hex(jump_addr))
-            jump_locations[jump_addr] = hex(jump_addr)
             # update_label_name(jump_addr,"C")
             mark_handled(jump_addr, 1, "C")
             # mark_handled(loc, 1, "C")
@@ -1130,7 +1116,6 @@ print_progress_bar(endaddress, endaddress, prefix='    Progress:', suffix='Compl
 # dump_code_array("Pre pass 2",0xd8dc)
 #//TODO: Reimpliment
 print("\nPass 2: Search for strings")
-id_sort = sorted(identified_areas)
 start = 0
 end = endaddress
 
