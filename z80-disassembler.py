@@ -174,10 +174,7 @@ def inc_program_counter(pc,inc):
     """
     It's a 16 bit system. You can't go past 0xffff
     """
-    if pc+inc<=0xffff:
-        return pc+inc
-    else:
-        return
+    return (pc + inc) & 0xffff
 
 def process_hextype(hexaddr):
     if asmtype()==3: # Maxam
@@ -427,9 +424,9 @@ def process_template(filename):
                                         mark_handled(loop,1,"S")
                                 case _:
                                     print("Unknown data type: ",datatype.lower())
-                                    exit
-                except:
-                    print(f"\n\nError processing template file at line {ln}: {lines[0][0]}")
+                                    sys.exit(1)
+                except Exception as e:
+                    print(f"\n\nError processing template file at line {ln}: {lines[0] if lines else '<empty>'}: {e}")
                     sys.exit(1)
     except OSError:
         print("Error: Could not open template file:", filename)
@@ -443,14 +440,15 @@ def to_number(n):
     """
     try:
         return int(str(n), 0)
-    except Exception:
+    except (ValueError, TypeError):
         try:
-            return int('0x' + n, 0)
-        except Exception:
-            return float(n)
-        finally:
-            print("\n\nError occured. Invalid number: ",n)
-            exit(1)
+            return int('0x' + str(n), 0)
+        except (ValueError, TypeError):
+            try:
+                return float(n)
+            except (ValueError, TypeError):
+                print(f"\n\nError occurred. Invalid number: {n}")
+                sys.exit(1)
 
 def parse_arguments():
     """
@@ -635,7 +633,7 @@ def validate_arguments(argslist):
     try:
         if args.templatefile:
             f=open(args.templatefile,'r')
-            f.close
+            f.close()
     except OSError:
         print("Error: Could not open template file:", args.templatefile)
         sys.exit(1)
@@ -644,7 +642,7 @@ def validate_arguments(argslist):
         if args.outfile:
             f=open(args.outfile,'w')
             f.write("\n")
-            f.close
+            f.close()
     except OSError:
         print("Error: Could not write to output file:", args.outfile)
         sys.exit(1)
@@ -760,12 +758,12 @@ def type_lookup(datatype):
             return "code"
 
 
-def update_label_name(addr, type):
+def update_label_name(addr, data_type):
     """
     Create a label name if the address is inside the code
     @params:
-        addr    - Required: Address
-        type    - Required: data type C/D
+        addr      - Required: Address
+        data_type - Required: data type C/D
     Returns:
         A string in the format D_1234 or data_1234 is returns
     """
@@ -775,11 +773,11 @@ def update_label_name(addr, type):
 
     match to_number(args.labeltype):
         case 1:
-            result = type
+            result = data_type
         case 2:
-            result = type_lookup(type)
+            result = type_lookup(data_type)
         case _:
-            result = type
+            result = data_type
 
     if is_in_code(addr):
         code[addr][2]=f'{result}_{addr:04X}'
@@ -851,8 +849,8 @@ def handle_data(b):
 
     if b.operands[0][0] is b.operands[0][0].ADDR_DEREF:  # if not a LD (HL)
         return b.operands[0][1]
-    elif b.operands[0][0] is b.operands[0][0].ADDR_DEREF:  # is a LD (0x1234),HL
-        return b.operands[0][1]
+    elif b.operands[1][0] is b.operands[1][0].ADDR_DEREF:  # is a LD (0x1234),HL
+        return b.operands[1][1]
     elif b.operands[1][0] is b.operands[0][0].ADDR_DEREF:  # is a LD HL,(0x1234)
         return b.operands[1][1]
     elif b.operands[1][0] is b.operands[1][0].IMM:  # is a LD (0x1234),HL
