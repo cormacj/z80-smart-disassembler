@@ -947,59 +947,100 @@ def split_string(input_string, delimiters):
     # Use re.split to split the input_string based on the pattern
     return re.split(regex_pattern, input_string)
 
+def _register_string(found_bytes, start, end):
+    """
+    Register a discovered string into the global tracking structures.
+    """
+    try:
+        s = found_bytes.decode('ascii', errors='replace')
+    except Exception:
+        return
+
+    # Only register if it looks like real text (has at least a few letters)
+    if not re.search(r"[A-Za-z]{2,}", s):
+        return
+
+    abs_start = code_org + start
+    abs_end   = code_org + end
+
+    # Determine the terminator byte (the byte just before 'end' in bin_data, if applicable)
+    term_byte = bin_data[end - 1] if end <= len(bin_data) else 0
+
+    quoted = f'"{s}"'
+    str_locations[abs_start] = quoted
+    str_sizes[abs_start] = end - start
+    strings_with_locations.append((quoted, start, end))
+
+    if args.debug:
+        print(f'String found at {hex(abs_start)}: {quoted} (term={hex(term_byte)})')
+
+    mark_handled(abs_start, end - start - 1, "S")
+
+
 def findstring(memstart, memend):
     """
-    Regex find strings
-    I need to figure out a better way to scan these
+    Scan binary data for strings, handling three terminator types:
+      - 0x00  (null)
+      - 0x0D  (CR / decimal 13)
+      - 0x80+ (last char of string has bit 7 set, i.e. ASCII + 0x80)
     """
+    i = memstart
+    data = bin_data[memstart:memend]
+    data_len = len(data)
 
-    pattern = re.compile(b"[ -~]{%d,}" % min_length)
+    print_progress_bar(0, data_len, prefix='    Progress:', suffix='Complete', length=50)
 
-    print_progress_bar(0, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
-    for match in pattern.finditer(bin_data):
-        start_position, end_position = match.start(), match.end()
-        matched_string = (
-            match.group()
-            .decode("ascii")
-            # .replace('"', '",34,"')
-            # .replace("\\", '", 0x5c, "')
-        )
-        found_string = f'"{matched_string}"'
-        print_progress_bar(start_position, len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
-        strings_with_locations.append((found_string, start_position, end_position))
+    while i < data_len:
+        print_progress_bar(i, data_len, prefix='    Progress:', suffix='Complete', length=50)
 
-    print_progress_bar(len(bin_data), len(bin_data), prefix='    Progress:', suffix='Complete', length=50)
-    for s, start, end in strings_with_locations:
-        if re.search(r"[A-Za-z]{3,}", s):
-            for delims in terminator_list:
-                if s.count(chr(delims))>1:
-                    strlen=len(s)-1
-                    s=s[1:strlen]
-                    res=split_string(s,chr(delims))
-                    substr_loc=start
-                    for subs in res:
-                        # print(subs)
+        byte = data[i]
 
-                        str_len=len(subs)
-                        if str_len==0:
-                            str_locations[code_org + substr_loc] = f'{hex(code[code_org+substr_loc][0])}'
-                            str_sizes[code_org + substr_loc] = 1
-                            if args.debug:
-                                print(f'String at step 1 {hex(code_org + substr_loc)}')
-                            mark_handled(code_org + substr_loc, str_len, "S")
-                        else:
-                            str_locations[code_org + substr_loc] = f'"{subs}"'
-                            str_sizes[code_org + substr_loc] = str_len
-                            if args.debug:
-                                print(f'String at step 2 {hex(code_org + substr_loc)}')
-                            mark_handled(code_org + substr_loc, str_len, "S")
-                        substr_loc += (str_len+1) # remember we allow for the delimiter
-                else:
-                    str_locations[code_org + start] = s
-                    str_sizes[code_org + start] = end - start
-                    if args.debug:
-                        print(f'String at step 3 {hex(code_org + start)}')
-                    mark_handled(code_org + start, end - start-1, "S")
+        # Skip non-printable, non-string-starting bytes
+        if not (0x20 <= byte <= 0x7E) and not (0xA0 <= byte <= 0xFE):
+            i += 1
+            continue
+
+        # Try to collect a string starting here
+        j = i
+        found = bytearray()
+
+        while j < data_len:
+            b = data[j]
+
+            if b in terminator_list:
+                # Null or CR terminator — include terminator in position tracking, stop collecting
+                if len(found) >= min_length:
+                    _register_string(found, i, j + 1)  # +1 to include the terminator
+                found = bytearray()
+                j += 1
+                break
+
+            elif 0xA0 <= b <= 0xFE:
+                # ASCII + 0x80 terminator — the character itself is the last char
+                # Strip the high bit to get the printable ASCII character
+                found.append(b & 0x7F)
+                if len(found) >= min_length:
+                    _register_string(found, i, j + 1)
+                found = bytearray()
+                j += 1
+                break
+
+            elif 0x20 <= b <= 0x7E:
+                # Normal printable ASCII — keep collecting
+                found.append(b)
+                j += 1
+
+            else:
+                # Non-printable, non-terminator — string ends here without a clean terminator
+                if len(found) >= min_length:
+                    _register_string(found, i, j)
+                found = bytearray()
+                j += 1
+                break
+
+        i = j
+
+    print_progress_bar(data_len, data_len, prefix='    Progress:', suffix='Complete', length=50)
 
 
 def main():
