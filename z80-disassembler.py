@@ -319,7 +319,6 @@ def load_labels(filename):
                         # No comment? Just parse the label.
                         parsed=lines.split()
                         added_comment=""
-                    res=(lines=="")
                     if len(parsed)<3 and len(lines)>1:
                         print(f'\nInvalid line in {filename} at line {ln}: {lines}')
                     if len(parsed)==3:
@@ -602,13 +601,13 @@ def validate_arguments(argslist):
         print("Writing code to ",argslist.outfile)
         print()
         try:
-            asm_file=open(args.outfile, 'w')
+            asm_file=open(argslist.outfile, 'w')
         except OSError:
-            print("Error: Could not write to output file:", args.outfile)
+            print("Error: Could not write to output file:", argslist.outfile)
             sys.exit(1)
 
-    if args.stringterminator is not None:
-        for terms in args.stringterminator:
+    if argslist.stringterminator is not None:
+        for terms in argslist.stringterminator:
             # If it's not a hex number or an actual number, then get the ascii of
             if (not terms.isdigit()) and terms[0:2]!="0x":
                 if len(terms)>1:
@@ -616,29 +615,29 @@ def validate_arguments(argslist):
                     sys.exit(1)
                 terms=ord(terms)
             terminator_list.append(to_number(terms))
-    commentlevel=to_number(args.commentlevel)
-    explainlevel=to_number(args.explainlevel)
-    stay_in_code=args.stay_in_code
+    commentlevel=to_number(argslist.commentlevel)
+    explainlevel=to_number(argslist.explainlevel)
+    stay_in_code=argslist.stay_in_code
 
-    if args.assembler=="z80asm":
-        args.labeltype=2
+    if argslist.assembler=="z80asm":
+        argslist.labeltype=2
 
     #Now ensure that the template file can be opened
     try:
-        if args.templatefile:
-            f=open(args.templatefile,'r')
+        if argslist.templatefile:
+            f=open(argslist.templatefile,'r')
             f.close()
     except OSError:
-        print("Error: Could not open template file:", args.templatefile)
+        print("Error: Could not open template file:", argslist.templatefile)
         sys.exit(1)
     #And ensure that the output file can be written
     try:
-        if args.outfile:
-            f=open(args.outfile,'w')
+        if argslist.outfile:
+            f=open(argslist.outfile,'w')
             f.write("\n")
             f.close()
     except OSError:
-        print("Error: Could not write to output file:", args.outfile)
+        print("Error: Could not write to output file:", argslist.outfile)
         sys.exit(1)
 
 
@@ -855,7 +854,6 @@ def handle_data(b):
         return None  # b.operands[1][1]
     else:
         return b.operands[1][1]
-    return None
 
 
 def handle_jump(b, current_address,only_relative=False):
@@ -884,6 +882,7 @@ def handle_jump(b, current_address,only_relative=False):
     """
 
     if b.op.name in ("JR", "DJNZ"):  # relative
+        relative_correction = 0
         if b.operands[0][0] is b.operands[0][0].ADDR:
             relative_correction = to_number(b.operands[0][1])
         elif b.operands[1][0] is b.operands[1][0].ADDR:
@@ -1142,7 +1141,6 @@ def main():
     No code is output.
     """
 
-    code_snapshot = bytearray(8)
     loc = 0
 
     if args.labelsfile:
@@ -1368,8 +1366,6 @@ def main():
                 do_write(tmp_str)
 
         #Next, process code and data
-        known_string=""
-
         if identified(program_counter) == "S":
             # check for the first way we gathered strings
             if program_counter in str_locations:
@@ -1411,9 +1407,6 @@ def main():
                         program_counter += len(a)-2
             else:
                 # It wasn't already handled as a string, so lets try and figure out what it is
-                tmp_string=''
-                strings = []
-                current_string = []
                 tmp_array = bytearray()
                 tmp_array_index=0
                 src_array_index=program_counter
@@ -1424,7 +1417,6 @@ def main():
                     src_array_index += 1
                     tmp_array_index +=1
 
-                    cnt=program_counter
                 result=build_strings_from_binary_data(tmp_array)
                 str_len=len(result)
                 #--------------------------------
@@ -1496,6 +1488,7 @@ def main():
                 tmpl = get_from_code(program_counter,0) #Low byte
                 tmph = get_from_code(program_counter+1,0) #High byte
                 tmp=((tmph*0x100)+tmpl) #make it a word
+                labelname = lookup_label(tmp, 1)
                 if (tmp in labels) or (tmp in template_labels):
                     if (tmp in template_labels):
                         labelname=template_labels[tmp]
@@ -1638,10 +1631,6 @@ def main():
                     program_counter += b.len
                 else:
                     debug(f'{hex(data_addr)} = {(data_addr in printed_labels)}')
-                    if data_addr in printed_labels:
-                        tmp = z80.disasm(b).replace(f'0x{data_addr:04x}',lookup_label(data_addr,1))
-                    else:
-                        tmp = z80.disasm(b).replace(f'0x{data_addr:04x}',lookup_label(data_addr,1))
                     tmp = z80.disasm(b).replace(f'0x{data_addr:04x}',lookup_label(data_addr,1))
                     tmp_data_addr = handle_data(b)
                     tmp_addr = hex(handle_data(b))
