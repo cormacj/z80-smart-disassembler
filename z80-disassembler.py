@@ -318,7 +318,6 @@ def load_labels(filename):
                         # No comment? Just parse the label.
                         parsed=lines.split()
                         added_comment=""
-                    res=(lines=="")
                     if len(parsed)<3 and len(lines)>1:
                         print(f'\nInvalid line in {filename} at line {ln}: {lines}')
                     if len(parsed)==3:
@@ -1141,7 +1140,6 @@ This pass is functionally the same as for pass 5, mostly to build the final labe
 No code is output.
 """
 
-code_snapshot = bytearray(8)
 loc = 0
 
 if args.labelsfile:
@@ -1367,8 +1365,6 @@ while program_counter < end_of_code:
             do_write(tmp_str)
 
     #Next, process code and data
-    known_string=""
-
     if identified(program_counter) == "S":
         # check for the first way we gathered strings
         if program_counter in str_locations:
@@ -1410,9 +1406,6 @@ while program_counter < end_of_code:
                     program_counter += len(a)-2
         else:
             # It wasn't already handled as a string, so lets try and figure out what it is
-            tmp_string=''
-            strings = []
-            current_string = []
             tmp_array = bytearray()
             tmp_array_index=0
             src_array_index=program_counter
@@ -1423,7 +1416,6 @@ while program_counter < end_of_code:
                 src_array_index += 1
                 tmp_array_index +=1
 
-                cnt=program_counter
             result=build_strings_from_binary_data(tmp_array)
             str_len=len(result)
             #--------------------------------
